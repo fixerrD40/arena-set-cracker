@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: arena-vendor
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres
+    user-name: postgres
+    password: test
+  liquibase:
+    change-log: classpath:liquibase/changelog.xml
