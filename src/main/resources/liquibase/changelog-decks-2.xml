@@ -1,0 +1,33 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="decks-2" author="hstafford">
+        <comment>
+            Update the decks table to support full deck model: add id, identity, tags, cards, notes, createdAt.
+        </comment>
+
+        <!-- 1. Add "id" as a new column -->
+        <addColumn tableName="decks">
+            <column name="id" type="INT" autoIncrement="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <!-- 2. Drop the existing primary key on "name" -->
+        <dropPrimaryKey tableName="decks" constraintName="decks_pk"/>
+
+        <!-- 3. Add a new primary key on "id" -->
+        <addPrimaryKey tableName="decks" columnNames="id" constraintName="decks_pk"/>
+
+        <!-- 4. Add remaining columns -->
+        <addColumn tableName="decks">
+            <column name="identity" type="varchar"/>
+            <column name="tags" type="jsonb"/>
+            <column name="cards" type="jsonb"/>
+            <column name="notes" type="text"/>
+            <column name="created_at" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

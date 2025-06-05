@@ -11,9 +11,9 @@ class DeckService(
     fun getDecks() = dao.decks()
     fun getDeckNames() = dao.deckNames()
 
-    fun getDeck(name: String): Deck? = dao.deck(name)
+    fun getDeck(id: Int): Deck? = dao.deck(id)
 
     fun insertDeck(deck: Deck): Boolean = dao.insertDeck(deck)
 
-    fun deleteDeck(name: String): Boolean = dao.deleteDeck(name)
+    fun deleteDeck(id: Int): Boolean = dao.deleteDeck(id)
 }

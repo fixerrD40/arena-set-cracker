@@ -91,9 +91,9 @@ class DecksRestController(
             ApiResponse(responseCode = "500", description = "Fail.")
         ]
     )
-    @GetMapping(path = ["{name}"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun loadDeck(@PathVariable name: String): ResponseEntity<Deck> {
-        return service.getDeck(name)
+    @GetMapping(path = ["{id}"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun loadDeck(@PathVariable id: Int): ResponseEntity<Deck> {
+        return service.getDeck(id)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
     }
