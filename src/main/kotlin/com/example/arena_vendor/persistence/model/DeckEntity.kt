@@ -18,6 +18,8 @@ data class DeckEntity(
 
     val arenaDeck: String,
 
+    val set: Int,
+
     @ElementCollection(targetClass = Color::class)
     @CollectionTable(name = "decks_colors", joinColumns = [JoinColumn(name = "deck_id")])
     @Enumerated(EnumType.STRING)
@@ -35,7 +37,7 @@ data class DeckEntity(
     @Column(name = "tag")
     val tags: Set<String> = emptySet(),
 
-    val notes: String? = null,
+    val notes: String = "",
 
     val createdAt: Instant? = null
 ) {
