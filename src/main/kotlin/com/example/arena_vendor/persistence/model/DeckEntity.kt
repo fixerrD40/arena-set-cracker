@@ -1,0 +1,52 @@
+package com.example.arena_vendor.persistence.model
+
+import com.example.arena_vendor.api.model.Color
+import com.example.arena_vendor.api.model.ColorIdentity
+import com.example.arena_vendor.api.model.Deck
+import jakarta.persistence.*
+import java.time.Instant
+
+@Entity
+@Table(name = "decks")
+data class DeckEntity(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Int? = null,
+
+    @Column(nullable = false)
+    val name: String,
+
+    val arenaDeck: String,
+
+    @ElementCollection(targetClass = Color::class)
+    @CollectionTable(name = "decks_colors", joinColumns = [JoinColumn(name = "deck_id")])
+    @Enumerated(EnumType.STRING)
+    @Column(name = "color")
+    val colors: Set<Color> = emptySet(),
+
+    @ElementCollection
+    @CollectionTable(name = "decks_cards", joinColumns = [JoinColumn(name = "deck_id")])
+    @MapKeyColumn(name = "card_name")
+    @Column(name = "quantity")
+    val cards: Map<String, Int> = emptyMap(),
+
+    @ElementCollection
+    @CollectionTable(name = "decks_tags", joinColumns = [JoinColumn(name = "deck_id")])
+    @Column(name = "tag")
+    val tags: Set<String> = emptySet(),
+
+    val notes: String? = null,
+
+    val createdAt: Instant? = null
+) {
+    fun toDomain(): Deck = Deck(
+        id = id,
+        name = name,
+        arenaDeck = arenaDeck,
+        identity = ColorIdentity.fromColors(colors),
+        cards = cards,
+        tags = tags,
+        notes = notes,
+        createdAt = createdAt
+    )
+}

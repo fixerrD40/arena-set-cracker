@@ -1,23 +1,21 @@
 package com.example.arena_vendor.api
 
+import com.example.arena_vendor.api.model.Color
+import com.example.arena_vendor.api.model.ColorIdentity
 import com.example.arena_vendor.api.model.Deck
-import com.example.arena_vendor.deck.DeckService
+import com.example.arena_vendor.api.model.DeckUpdateRequest
+import com.example.arena_vendor.service.DeckService
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.enums.ParameterIn
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
-import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.*
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 
 @RestController
@@ -30,7 +28,7 @@ class DecksRestController(
     @Operation(
         summary = "decks",
         method = "GET",
-        description = "Get saved decks",
+        description = "Get saved decks.",
         responses = [
             ApiResponse(
                 responseCode = "200",
@@ -41,66 +39,120 @@ class DecksRestController(
         ],
     )
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun decks(): ResponseEntity<Set<Deck>> = ResponseEntity.ok(service.getDecks())
+    fun loadDecks(): ResponseEntity<List<Deck>> = ResponseEntity.ok(service.getDecks())
 
     @Operation(
-        summary = "decksNames",
-        method = "GET",
-        description = "Get the names of saved decks",
-        responses = [
-            ApiResponse(
-                responseCode = "200",
-                description = "Success.",
-                content = [Content(examples= [ExampleObject(SAVED_DECKS_NAMES)])]
-            ),
-            ApiResponse(responseCode = "500", description = "Fail.")
-        ]
-    )
-    @GetMapping(path = ["names"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun deckNames(): ResponseEntity<Set<String>> = ResponseEntity.ok(service.getDeckNames())
-
-    @Operation(
-        summary = "saveDeck",
+        summary = "insertDeck",
         method = "POST",
-        description = "Save a deck.",
+        description = "Insert a deck.",
         responses = [
             ApiResponse(responseCode = "200", description = "Success."),
             ApiResponse(responseCode = "500", description = "Fail.")
         ],
+        parameters = [
+            Parameter(
+                name = "name",
+                description = "A name for your deck.",
+                required = true,
+                `in` = ParameterIn.PATH,
+                example = "The Shire"
+            )
+        ],
         requestBody = SwaggerRequestBody(
-            description = "A name and the deck string copied when exporting a deck in Magic: The Gathering Arena",
+            description = "The deck string copied when exporting a deck in Magic: The Gathering Arena",
             content = [Content(examples= [ExampleObject(PLAIN_DECK)])]
         )
     )
-    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
-    fun saveDeck(@RequestBody deck: Deck) {
-        check(service.insertDeck(deck))
+    @PostMapping(path = ["{name}"], consumes = [MediaType.APPLICATION_JSON_VALUE])
+    fun insertDeck(@PathVariable name: String, @RequestBody arenaDeck: String): ResponseEntity<Deck> {
+        val parseResult = parseDeck(arenaDeck)
+
+        val deck = Deck(
+            name = name,
+            arenaDeck = arenaDeck,
+            identity = ColorIdentity.fromColors(parseResult.colors),
+            cards = parseResult.cards
+        )
+
+        return ResponseEntity.ok(service.saveDeck(deck))
     }
 
     @Operation(
-        summary = "loadDeck",
-        method = "GET",
-        description = "Load a deck.",
+        summary = "updateDeck",
+        method = "POST",
+        description = "Update a deck.",
         responses = [
-            ApiResponse(
-                responseCode = "200",
-                description = "Success.",
-                content = [Content(examples= [ExampleObject(PLAIN_DECK)])]
-            ),
-            ApiResponse(responseCode = "404", description = "Not found."),
+            ApiResponse(responseCode = "200", description = "Success."),
             ApiResponse(responseCode = "500", description = "Fail.")
+        ],
+        parameters = [
+            Parameter(
+                name = "id",
+                description = "The unique identifier of the deck to be updated.",
+                required = true,
+                `in` = ParameterIn.PATH,
+                example = "42"
+            )
+        ],
+        requestBody = SwaggerRequestBody(
+            description = "Changes to a deck to be persisted in the backend.",
+            content = [Content(examples= [ExampleObject(UPDATE_NAME_REQUEST)])]
+        )
+    )
+    @PatchMapping("/{id}")
+    fun updateDeck(@PathVariable id: Int, @RequestBody updateRequest: DeckUpdateRequest): ResponseEntity<Deck> {
+        val existing = service.getDeck(id)
+
+        val parseResult = updateRequest.arenaDeck
+            ?.let { parseDeck(it) }
+
+        val updatedDeck = existing.copy(
+            name = updateRequest.name ?: existing.name,
+            arenaDeck = updateRequest.arenaDeck ?: existing.arenaDeck,
+            identity = parseResult?.let { ColorIdentity.fromColors(it.colors) } ?: existing.identity,
+            cards = parseResult?.cards ?: existing.cards,
+            tags = updateRequest.tags ?: existing.tags,
+            notes = updateRequest.notes ?: existing.notes
+        )
+
+        return ResponseEntity.ok(service.saveDeck(updatedDeck))
+    }
+
+    @Operation(
+        summary = "deleteDeck",
+        method = "DELETE",
+        description = "Delete a deck.",
+        responses = [
+            ApiResponse(responseCode = "200", description = "Success."),
+            ApiResponse(responseCode = "500", description = "Fail.")
+        ],
+        parameters = [
+            Parameter(
+                name = "id",
+                description = "The unique identifier of the deck to be deleted.",
+                required = true,
+                `in` = ParameterIn.PATH,
+                example = "42"
+            )
         ]
     )
-    @GetMapping(path = ["{id}"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun loadDeck(@PathVariable id: Int): ResponseEntity<Deck> {
-        return service.getDeck(id)
-            ?.let { ResponseEntity.ok(it) }
-            ?: ResponseEntity.notFound().build()
+    @DeleteMapping("/{id}")
+    fun deleteDeck(@PathVariable id: Int) {
+        service.deleteDeck(id)
+    }
+
+    private fun parseDeck(arenaDeck: String): ParseResult {
+        return ParseResult(mapOf(), setOf(Color.R))
     }
 
     companion object {
         private const val SAVED_DECKS = """[{"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}]"""
-        private const val SAVED_DECKS_NAMES = """["Plain Deck"]"""
         private const val PLAIN_DECK = """{"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}"""
+        private const val UPDATE_NAME_REQUEST = """{"name":"Plain Deck","arenaDeck":null,"tags":null,"notes":null}"""
+
+        private data class ParseResult(
+            val cards: Map<String, Int>,
+            val colors: Set<Color>
+        )
     }
 }

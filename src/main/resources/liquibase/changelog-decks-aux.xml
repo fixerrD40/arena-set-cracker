@@ -1,0 +1,80 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="decks-aux-colors" author="hstafford">
+        <comment>
+            Add decks_colors auxiliary table to support advanced querying of decks according to their identity.
+        </comment>
+
+        <createTable tableName="decks_colors">
+            <column name="deck_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="color" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="decks_colors" columnNames="deck_id, color" constraintName="decks_colors_pk"/>
+
+        <addForeignKeyConstraint baseTableName="decks_colors"
+                                 baseColumnNames="deck_id"
+                                 referencedTableName="decks"
+                                 referencedColumnNames="id"
+                                 constraintName="decks_colors_fk"
+                                 onDelete="CASCADE"/>
+    </changeSet>
+
+    <changeSet id="decks-aux-cards" author="hstafford">
+        <comment>
+            Add decks_cards auxiliary table to support advanced querying of decks according to their cards.
+        </comment>
+
+        <createTable tableName="decks_cards">
+            <column name="deck_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="card_name" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="decks_cards" columnNames="deck_id, card_name" constraintName="decks_cards_pk"/>
+
+        <addForeignKeyConstraint baseTableName="decks_cards"
+                                 baseColumnNames="deck_id"
+                                 referencedTableName="decks"
+                                 referencedColumnNames="id"
+                                 constraintName="decks_cards_fk"
+                                 onDelete="CASCADE"/>
+    </changeSet>
+
+    <changeSet id="decks-aux-tags" author="hstafford">
+        <comment>
+            Add decks_tags auxiliary table to support advanced querying of decks according to their tags.
+        </comment>
+
+        <createTable tableName="decks_tags">
+            <column name="deck_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tag" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey tableName="decks_tags" columnNames="deck_id, tag" constraintName="decks_tags_pk"/>
+
+        <addForeignKeyConstraint baseTableName="decks_tags"
+                                 baseColumnNames="deck_id"
+                                 referencedTableName="decks"
+                                 referencedColumnNames="id"
+                                 constraintName="decks_tags_fk"
+                                 onDelete="CASCADE"/>
+    </changeSet>
+
+</databaseChangeLog>

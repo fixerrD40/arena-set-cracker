@@ -1,11 +1,11 @@
 package com.example.arena_vendor.api.model
 
+import com.example.arena_vendor.persistence.model.DeckEntity
 import java.time.Instant
-import java.time.LocalDateTime
 
-// add user and set
+// todo support user and set
 data class Deck(
-    val id: Int?,
+    val id: Int? = null,
     val name: String,
     val arenaDeck: String,
     val identity: ColorIdentity,
@@ -14,16 +14,17 @@ data class Deck(
     val cards: Map<String, Int>,
     val tags: Set<String> = emptySet(),
     val notes: String? = null,
-    val createdAt: Instant?
+    val createdAt: Instant? = null
 ) {
-//    val cards = arenaDeck.lines()
-//        .mapNotNull { line ->
-//            val trimmed = line.trim()
-//            val parts = trimmed.split(" ", limit = 2)
-//            if (parts.size == 2) {
-//                val count = parts[0].toIntOrNull()
-//                val name = parts[1]
-//                if (count != null) name to count else null
-//            } else null
-//        }.toMap()
+
+    fun toEntity(): DeckEntity = DeckEntity(
+        id = id,
+        name = name,
+        arenaDeck = arenaDeck,
+        colors = identity.colors,
+        cards = cards,
+        tags = tags,
+        notes = notes,
+        createdAt = createdAt
+    )
 }

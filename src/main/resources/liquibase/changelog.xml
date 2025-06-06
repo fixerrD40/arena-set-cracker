@@ -4,5 +4,7 @@
 
     <include file="changelog-decks.xml" relativeToChangelogFile="true" />
     <include file="changelog-decks-2.xml" relativeToChangelogFile="true" />
+    <include file="changelog-decks-aux.xml" relativeToChangelogFile="true" />
+    <include file="changelog-decks-3.xml" relativeToChangelogFile="true" />
 
 </databaseChangeLog>
