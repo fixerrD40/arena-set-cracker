@@ -39,3 +39,9 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
 }
+
+dockerCompose {
+    useComposeFiles.set(listOf("src/main/resources/docker-compose.yml"))
+}
+
+dockerCompose.isRequiredBy(tasks.test)
