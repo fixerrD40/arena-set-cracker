@@ -1,8 +1,8 @@
-package com.example.arena_vendor.persistence.model
+package com.example.arena_set_cracker.persistence.model
 
-import com.example.arena_vendor.api.model.Color
-import com.example.arena_vendor.api.model.ColorIdentity
-import com.example.arena_vendor.api.model.Deck
+import com.example.arena_set_cracker.api.model.Color
+import com.example.arena_set_cracker.api.model.ColorIdentity
+import com.example.arena_set_cracker.api.model.Deck
 import jakarta.persistence.*
 import java.time.Instant
 

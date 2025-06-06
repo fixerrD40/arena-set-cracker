@@ -1,11 +1,10 @@
-package com.example.arena_vendor.api
+package com.example.arena_set_cracker.api
 
-import com.example.arena_vendor.api.model.Color
-import com.example.arena_vendor.api.model.ColorIdentity
-import com.example.arena_vendor.api.model.Deck
-import com.example.arena_vendor.api.model.DeckUpdateRequest
-import com.example.arena_vendor.service.DeckService
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.example.arena_set_cracker.api.model.Color
+import com.example.arena_set_cracker.api.model.ColorIdentity
+import com.example.arena_set_cracker.api.model.Deck
+import com.example.arena_set_cracker.api.model.DeckUpdateRequest
+import com.example.arena_set_cracker.service.DeckService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.enums.ParameterIn

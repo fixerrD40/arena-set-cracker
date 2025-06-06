@@ -1,6 +1,6 @@
 spring:
   application:
-    name: arena-vendor
+    name: arena-set-cracker
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
     user-name: postgres

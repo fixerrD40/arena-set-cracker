@@ -1,4 +1,4 @@
-package com.example.arena_vendor.api.model
+package com.example.arena_set_cracker.api.model
 
 data class DeckUpdateRequest(
     val name: String? = null,

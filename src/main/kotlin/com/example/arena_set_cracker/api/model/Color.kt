@@ -1,4 +1,4 @@
-package com.example.arena_vendor.api.model
+package com.example.arena_set_cracker.api.model
 
 enum class Color(val displayName: String) {
     W("White"),

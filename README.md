@@ -1,2 +1,2 @@
-# arena-vendor
-Vendor desktop (actually web) app for Magic: The Gathering Arena decks
+# arena-set-cracker
+Desktop (actually web) app to help you organize your cards into decks in Magic: The Gathering Arena.

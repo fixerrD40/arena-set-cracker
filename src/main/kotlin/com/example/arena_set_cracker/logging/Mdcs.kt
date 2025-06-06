@@ -1,4 +1,4 @@
-package com.example.arena_vendor.logging
+package com.example.arena_set_cracker.logging
 
 import org.slf4j.MDC
 

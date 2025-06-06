@@ -1,4 +1,4 @@
-package com.example.arena_vendor.liquibase
+package com.example.arena_set_cracker.liquibase
 
 import liquibase.integration.spring.SpringLiquibase
 import org.springframework.boot.ApplicationArguments

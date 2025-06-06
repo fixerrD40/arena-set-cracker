@@ -1,6 +1,6 @@
-package com.example.arena_vendor.http
+package com.example.arena_set_cracker.http
 
-import com.example.arena_vendor.logging.Mdcs
+import com.example.arena_set_cracker.logging.Mdcs
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse

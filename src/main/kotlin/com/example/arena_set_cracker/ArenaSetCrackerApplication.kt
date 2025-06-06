@@ -1,11 +1,11 @@
-package com.example.arena_vendor
+package com.example.arena_set_cracker
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 
 @SpringBootApplication
-class ArenaVendorApplication
+class ArenaSetCrackerApplication
 
 fun main(args: Array<String>) {
-	runApplication<ArenaVendorApplication>(*args)
+	runApplication<ArenaSetCrackerApplication>(*args)
 }

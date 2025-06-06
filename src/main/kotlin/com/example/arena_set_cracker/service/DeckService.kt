@@ -1,7 +1,7 @@
-package com.example.arena_vendor.service
+package com.example.arena_set_cracker.service
 
-import com.example.arena_vendor.api.model.*
-import com.example.arena_vendor.persistence.DeckRepository
+import com.example.arena_set_cracker.api.model.*
+import com.example.arena_set_cracker.persistence.DeckRepository
 import org.springframework.stereotype.Component
 
 @Component

@@ -1,7 +1,7 @@
-package com.example.arena_vendor.api.model
+package com.example.arena_set_cracker.api.model
 
-import com.example.arena_vendor.logging.Mdcs
-import com.example.arena_vendor.persistence.model.DeckEntity
+import com.example.arena_set_cracker.logging.Mdcs
+import com.example.arena_set_cracker.persistence.model.DeckEntity
 import java.time.Instant
 
 data class Deck(

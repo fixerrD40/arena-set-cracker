@@ -1,4 +1,4 @@
-package com.example.arena_vendor.http
+package com.example.arena_set_cracker.http
 
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.CorsRegistry
