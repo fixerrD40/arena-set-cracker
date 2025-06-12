@@ -3,13 +3,13 @@ package com.example.arena_set_cracker.api
 import com.example.arena_set_cracker.api.model.Color
 import com.example.arena_set_cracker.api.model.ColorIdentity
 import com.example.arena_set_cracker.api.model.Deck
-import com.example.arena_set_cracker.api.model.DeckUpdateRequest
 import com.example.arena_set_cracker.service.DeckService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.enums.ParameterIn
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
+import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.MediaType
@@ -32,7 +32,13 @@ class DecksRestController(
             ApiResponse(
                 responseCode = "200",
                 description = "Success.",
-                content = [Content(examples= [ExampleObject(SAVED_DECKS)])]
+                content = [
+                    Content(
+                        mediaType = MediaType.APPLICATION_JSON_VALUE,
+                        schema = Schema(implementation = Deck::class, type = "array"),
+                        examples= [ExampleObject(SAVED_DECKS)]
+                    )
+                ]
             ),
             ApiResponse(responseCode = "500", description = "Fail.")
         ],
@@ -45,35 +51,37 @@ class DecksRestController(
         method = "POST",
         description = "Insert a deck.",
         responses = [
-            ApiResponse(responseCode = "200", description = "Success."),
+            ApiResponse(
+                responseCode = "200",
+                description = "Success.",
+                content = [
+                    Content(
+                        mediaType = MediaType.APPLICATION_JSON_VALUE,
+                        schema = Schema(implementation = Deck::class),
+                        examples= [ExampleObject(PLAIN_DECK)]
+                    )
+                ]
+            ),
+            ApiResponse(responseCode = "400", description = "Invalid input."),
             ApiResponse(responseCode = "500", description = "Fail.")
         ],
-        parameters = [
-            Parameter(
-                name = "name",
-                description = "A name for your deck.",
-                required = true,
-                `in` = ParameterIn.PATH,
-                example = "The Shire"
-            )
-        ],
         requestBody = SwaggerRequestBody(
-            description = "The deck string copied when exporting a deck in Magic: The Gathering Arena",
-            content = [Content(examples= [ExampleObject(PLAIN_DECK)])]
+            required = true,
+            description = "A deck object to be persisted to the backend.",
+            content = [
+                Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = Deck::class),
+                    examples = [ExampleObject(PLAIN_DECK)]
+                )
+            ]
         )
     )
     @PostMapping(path = ["{name}"], consumes = [MediaType.APPLICATION_JSON_VALUE])
-    fun insertDeck(@PathVariable name: String, @RequestBody arenaDeck: String): ResponseEntity<Deck> {
-        val parseResult = parseDeck(arenaDeck)
+    fun insertDeck(@RequestBody input: Deck): ResponseEntity<Deck> {
+        val detailedDeck = populateDeckDetails(input)
 
-        val deck = Deck(
-            name = name,
-            arenaDeck = arenaDeck,
-            identity = ColorIdentity.fromColors(parseResult.colors),
-            cards = parseResult.cards
-        )
-
-        return ResponseEntity.ok(service.saveDeck(deck))
+        return ResponseEntity.ok(service.saveDeck(detailedDeck))
     }
 
     @Operation(
@@ -81,7 +89,18 @@ class DecksRestController(
         method = "POST",
         description = "Update a deck.",
         responses = [
-            ApiResponse(responseCode = "200", description = "Success."),
+            ApiResponse(
+                responseCode = "200",
+                description = "Success.",
+                content = [
+                    Content(
+                        mediaType = MediaType.APPLICATION_JSON_VALUE,
+                        schema = Schema(implementation = Deck::class),
+                        examples= [ExampleObject(PLAIN_DECK)]
+                    )
+                ]
+            ),
+            ApiResponse(responseCode = "400", description = "Invalid input."),
             ApiResponse(responseCode = "500", description = "Fail.")
         ],
         parameters = [
@@ -94,24 +113,30 @@ class DecksRestController(
             )
         ],
         requestBody = SwaggerRequestBody(
-            description = "Changes to a deck to be persisted in the backend.",
-            content = [Content(examples= [ExampleObject(UPDATE_NAME_REQUEST)])]
+            description = "The deck object to be persisted to the backend.",
+            content = [
+                Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = Deck::class),
+                    examples= [ExampleObject(TAGGED_PLAIN_DECK)]
+                )
+            ]
         )
     )
     @PatchMapping("/{id}")
-    fun updateDeck(@PathVariable id: Int, @RequestBody updateRequest: DeckUpdateRequest): ResponseEntity<Deck> {
+    fun updateDeck(@PathVariable id: Int, @RequestBody deckUpdates: Deck): ResponseEntity<Deck> {
         val existing = service.getDeck(id)
 
-        val parseResult = updateRequest.arenaDeck
-            ?.let { parseDeck(it) }
+        val detailedDeckUpdates = if (deckUpdates.arenaDeck != existing.arenaDeck) populateDeckDetails(deckUpdates)
+        else null
 
         val updatedDeck = existing.copy(
-            name = updateRequest.name ?: existing.name,
-            arenaDeck = updateRequest.arenaDeck ?: existing.arenaDeck,
-            identity = parseResult?.let { ColorIdentity.fromColors(it.colors) } ?: existing.identity,
-            cards = parseResult?.cards ?: existing.cards,
-            tags = updateRequest.tags ?: existing.tags,
-            notes = updateRequest.notes ?: existing.notes
+            name = deckUpdates.name,
+            arenaDeck = deckUpdates.arenaDeck,
+            identity = detailedDeckUpdates?.identity ?: existing.identity,
+            cards = detailedDeckUpdates?.cards ?: existing.cards,
+            tags = deckUpdates.tags,
+            notes = deckUpdates.notes
         )
 
         return ResponseEntity.ok(service.saveDeck(updatedDeck))
@@ -140,18 +165,16 @@ class DecksRestController(
         service.deleteDeck(id)
     }
 
-    private fun parseDeck(arenaDeck: String): ParseResult {
-        return ParseResult(mapOf(), setOf(Color.R))
+    private fun populateDeckDetails(input: Deck): Deck {
+        return input.copy(
+            cards = mapOf(),
+            identity = ColorIdentity.fromColors(setOf(Color.R))
+        )
     }
 
     companion object {
         private const val SAVED_DECKS = """[{"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}]"""
         private const val PLAIN_DECK = """{"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}"""
-        private const val UPDATE_NAME_REQUEST = """{"name":"Plain Deck","arenaDeck":null,"tags":null,"notes":null}"""
-
-        private data class ParseResult(
-            val cards: Map<String, Int>,
-            val colors: Set<Color>
-        )
+        private const val TAGGED_PLAIN_DECK = """{"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263","tags":["passive"]}"""
     }
 }

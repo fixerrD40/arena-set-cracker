@@ -8,10 +8,10 @@ data class Deck(
     val id: Int? = null,
     val name: String,
     val arenaDeck: String,
-    val identity: ColorIdentity,
+    val identity: ColorIdentity?,
     val cards: Map<String, Int>,
     val tags: Set<String> = emptySet(),
-    val notes: String? = null,
+    val notes: String = "",
     val createdAt: Instant? = null
 ) {
 
@@ -19,7 +19,7 @@ data class Deck(
         id = id,
         name = name,
         arenaDeck = arenaDeck,
-        colors = identity.colors,
+        colors = identity!!.colors,
         set = Mdcs.RequestContext.set,
         cards = cards,
         tags = tags,
