@@ -1,9 +1,7 @@
 spring:
   application:
     name: arena-set-cracker
-  datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
-    user-name: postgres
-    password: test
-  liquibase:
-    change-log: classpath:liquibase/changelog.xml
+  config:
+    import:
+    - classpath:config/config.yml
+    - classpath:spring/spring.yml

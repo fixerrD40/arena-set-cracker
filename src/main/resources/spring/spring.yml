@@ -1,0 +1,5 @@
+spring:
+  config:
+    import:
+      - classpath:spring/datasource.yml
+      - classpath:spring/liquibase.yml
