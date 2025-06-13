@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -29,21 +30,22 @@ class UserRestController(
 
     @Operation(summary = "Register a new user and return JWT token")
     @ApiResponses(
-        ApiResponse(responseCode = "201", description = "User registered successfully",
+        ApiResponse(responseCode = "201", description = "User registered successfully.",
             content = [Content(schema = Schema(implementation = AuthResult::class))]),
-        ApiResponse(responseCode = "409", description = "Username already exists")
+        ApiResponse(responseCode = "400", description = "Validation failed."),
+        ApiResponse(responseCode = "409", description = "Username already exists."),
+        ApiResponse(responseCode = "500", description = "Unexpected server error.")
     )
     @PostMapping
     fun registerUser(@RequestBody credentials: Credentials): ResponseEntity<AuthResult> {
         return try {
             val user = userService.registerUser(credentials.username, credentials.password)
 
-            // Now act like we’re logging them in:
             val userDetails = userDetailsService.loadUserByUsername(credentials.username)
             val jwt = jwtUtil.generateToken(userDetails)
 
             ResponseEntity.status(HttpStatus.CREATED).body(AuthResult(credentials.username, jwt))
-        } catch (e: IllegalArgumentException) {
+        } catch (e: DataIntegrityViolationException) {
             ResponseEntity.status(HttpStatus.CONFLICT).build()
         }
     }

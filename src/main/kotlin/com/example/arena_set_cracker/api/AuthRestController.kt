@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@Tag(name = "Authentication Rest Controller", description = "Authenticate user")
+@Tag(name = "Auth Rest Controller", description = "Authenticate user")
 @RequestMapping(path = [ "authenticate" ])
 class AuthRestController(
     private val authenticationManager: AuthenticationManager,
@@ -31,9 +31,11 @@ class AuthRestController(
 
     @Operation(summary = "Authenticate user and generate JWT token")
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Authentication successful",
+        ApiResponse(responseCode = "200", description = "Authentication successful.",
             content = [Content(schema = Schema(implementation = AuthResult::class))]),
-        ApiResponse(responseCode = "401", description = "Invalid username or password")
+        ApiResponse(responseCode = "400", description = "Validation failed."),
+        ApiResponse(responseCode = "401", description = "Invalid username or password."),
+        ApiResponse(responseCode = "500", description = "Unexpected server error.")
     )
     @PostMapping
     fun authenticateUser(@RequestBody credentials: Credentials): ResponseEntity<AuthResult> {

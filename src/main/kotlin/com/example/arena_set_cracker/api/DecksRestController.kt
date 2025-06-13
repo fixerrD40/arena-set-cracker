@@ -12,6 +12,8 @@ import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -25,13 +27,13 @@ class DecksRestController(
 ) {
 
     @Operation(
-        summary = "decks",
+        summary = "loadDecks",
         method = "GET",
-        description = "Get saved decks.",
+        description = "Load saved decks.",
         responses = [
             ApiResponse(
                 responseCode = "200",
-                description = "Success.",
+                description = "Loaded saved decks successfully.",
                 content = [
                     Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -40,7 +42,7 @@ class DecksRestController(
                     )
                 ]
             ),
-            ApiResponse(responseCode = "500", description = "Fail.")
+            ApiResponse(responseCode = "500", description = "Unexpected server error.")
         ],
     )
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -52,18 +54,18 @@ class DecksRestController(
         description = "Insert a deck.",
         responses = [
             ApiResponse(
-                responseCode = "200",
-                description = "Success.",
+                responseCode = "201",
+                description = "Deck created successfully.",
                 content = [
                     Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
                         schema = Schema(implementation = Deck::class),
-                        examples= [ExampleObject(PLAIN_DECK)]
+                        examples = [ExampleObject(PLAIN_DECK)]
                     )
                 ]
             ),
-            ApiResponse(responseCode = "400", description = "Invalid input."),
-            ApiResponse(responseCode = "500", description = "Fail.")
+            ApiResponse(responseCode = "409", description = "Deck already exists."),
+            ApiResponse(responseCode = "500", description = "Unexpected server error.")
         ],
         requestBody = SwaggerRequestBody(
             required = true,
@@ -77,11 +79,15 @@ class DecksRestController(
             ]
         )
     )
-    @PostMapping(path = ["{name}"], consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun insertDeck(@RequestBody input: Deck): ResponseEntity<Deck> {
-        val detailedDeck = populateDeckDetails(input)
+        return try {
+            val detailedDeck = populateDeckDetails(input)
 
-        return ResponseEntity.ok(service.saveDeck(detailedDeck))
+            ResponseEntity.status(HttpStatus.CREATED).body(detailedDeck)
+        } catch (e: DataIntegrityViolationException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).build()
+        }
     }
 
     @Operation(
@@ -91,7 +97,7 @@ class DecksRestController(
         responses = [
             ApiResponse(
                 responseCode = "200",
-                description = "Success.",
+                description = "Deck updated successfully.",
                 content = [
                     Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -100,8 +106,8 @@ class DecksRestController(
                     )
                 ]
             ),
-            ApiResponse(responseCode = "400", description = "Invalid input."),
-            ApiResponse(responseCode = "500", description = "Fail.")
+            ApiResponse(responseCode = "404", description = "Deck not found."),
+            ApiResponse(responseCode = "500", description = "Unexpected server error.")
         ],
         parameters = [
             Parameter(
@@ -125,21 +131,25 @@ class DecksRestController(
     )
     @PatchMapping("/{id}")
     fun updateDeck(@PathVariable id: Int, @RequestBody deckUpdates: Deck): ResponseEntity<Deck> {
-        val existing = service.getDeck(id)
+        try {
+            val existing = service.getDeck(id)
 
-        val detailedDeckUpdates = if (deckUpdates.arenaDeck != existing.arenaDeck) populateDeckDetails(deckUpdates)
-        else null
+            val detailedDeckUpdates = if (deckUpdates.arenaDeck != existing.arenaDeck) populateDeckDetails(deckUpdates)
+            else null
 
-        val updatedDeck = existing.copy(
-            name = deckUpdates.name,
-            arenaDeck = deckUpdates.arenaDeck,
-            identity = detailedDeckUpdates?.identity ?: existing.identity,
-            cards = detailedDeckUpdates?.cards ?: existing.cards,
-            tags = deckUpdates.tags,
-            notes = deckUpdates.notes
-        )
+            val updatedDeck = existing.copy(
+                name = deckUpdates.name,
+                arenaDeck = deckUpdates.arenaDeck,
+                identity = detailedDeckUpdates?.identity ?: existing.identity,
+                cards = detailedDeckUpdates?.cards ?: existing.cards,
+                tags = deckUpdates.tags,
+                notes = deckUpdates.notes
+            )
 
-        return ResponseEntity.ok(service.saveDeck(updatedDeck))
+            return ResponseEntity.ok(service.saveDeck(updatedDeck))
+        } catch (e: NoSuchElementException) {
+            return ResponseEntity(HttpStatus.NOT_FOUND)
+        }
     }
 
     @Operation(
@@ -147,8 +157,9 @@ class DecksRestController(
         method = "DELETE",
         description = "Delete a deck.",
         responses = [
-            ApiResponse(responseCode = "200", description = "Success."),
-            ApiResponse(responseCode = "500", description = "Fail.")
+            ApiResponse(responseCode = "204", description = "Deck deleted successfully."),
+            ApiResponse(responseCode = "404", description = "Deck not found."),
+            ApiResponse(responseCode = "500", description = "Unexpected server error.")
         ],
         parameters = [
             Parameter(
@@ -161,8 +172,13 @@ class DecksRestController(
         ]
     )
     @DeleteMapping("/{id}")
-    fun deleteDeck(@PathVariable id: Int) {
-        service.deleteDeck(id)
+    fun deleteDeck(@PathVariable id: Int): ResponseEntity<Any> {
+        return try {
+            service.deleteDeck(id)
+            ResponseEntity.noContent().build()
+        } catch (e: NoSuchElementException) {
+            return ResponseEntity(HttpStatus.NOT_FOUND)
+        }
     }
 
     private fun populateDeckDetails(input: Deck): Deck {
