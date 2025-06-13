@@ -26,6 +26,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-security")
 
     implementation("org.springframework.cloud:spring-cloud-starter-openfeign")
 
@@ -33,6 +34,11 @@ dependencies {
     implementation("io.swagger.core.v3:swagger-annotations-jakarta:2.2.28")
     implementation("org.liquibase:liquibase-core:4.31.0")
     implementation("org.postgresql:postgresql:42.7.5")
+
+    // jjwt
+    implementation("io.jsonwebtoken:jjwt-api:0.11.5")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.11.5")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.11.5")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
