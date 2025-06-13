@@ -3,7 +3,10 @@ package com.example.arena_set_cracker.api
 import com.example.arena_set_cracker.api.model.Color
 import com.example.arena_set_cracker.api.model.ColorIdentity
 import com.example.arena_set_cracker.api.model.Deck
+import com.example.arena_set_cracker.logging.Mdcs
 import com.example.arena_set_cracker.service.DeckService
+import com.example.arena_set_cracker.service.SetService
+import com.example.arena_set_cracker.service.UserService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.enums.ParameterIn
@@ -23,7 +26,9 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBod
 @Tag(name = "Decks Rest Controller", description = "Manage Decks")
 @RequestMapping(path = [ "api/decks" ])
 class DecksRestController(
-    private val service: DeckService
+    private val service: DeckService,
+    private val setService: SetService,
+    private val userService: UserService
 ) {
 
     @Operation(
@@ -132,6 +137,8 @@ class DecksRestController(
     @PatchMapping("/{id}")
     fun updateDeck(@PathVariable id: Int, @RequestBody deckUpdates: Deck): ResponseEntity<Deck> {
         try {
+            val user = userService.getUser()!!
+            val set = setService.getSet(user, Mdcs.RequestContext.set)!!
             val existing = service.getDeck(id)
 
             val detailedDeckUpdates = if (deckUpdates.arenaDeck != existing.arenaDeck) populateDeckDetails(deckUpdates)
@@ -146,7 +153,7 @@ class DecksRestController(
                 notes = deckUpdates.notes
             )
 
-            return ResponseEntity.ok(service.saveDeck(updatedDeck))
+            return ResponseEntity.ok(service.saveDeck(set, updatedDeck))
         } catch (e: NoSuchElementException) {
             return ResponseEntity(HttpStatus.NOT_FOUND)
         }

@@ -1,6 +1,6 @@
 package com.example.arena_set_cracker.scryfall.model
 
-data class Set(
+data class ScryfallSet(
     val id: String,
     val code: String,
     val name: String,

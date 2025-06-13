@@ -1,6 +1,5 @@
 package com.example.arena_set_cracker.api.model
 
-import com.example.arena_set_cracker.logging.Mdcs
 import com.example.arena_set_cracker.persistence.model.DeckEntity
 import java.time.Instant
 
@@ -15,12 +14,12 @@ data class Deck(
     val createdAt: Instant? = null
 ) {
 
-    fun toEntity(): DeckEntity = DeckEntity(
+    fun toEntityForSet(set: Int): DeckEntity = DeckEntity(
         id = id,
         name = name,
         arenaDeck = arenaDeck,
         colors = identity!!.colors,
-        set = Mdcs.RequestContext.set,
+        set = set,
         cards = cards,
         tags = tags,
         notes = notes,

@@ -4,5 +4,5 @@ data class SetListResponse(
     val objectType: String,
     val total_cards: Int,
     val has_more: Boolean,
-    val data: List<Set>
+    val data: List<ScryfallSet>
 )
