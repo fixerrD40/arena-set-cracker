@@ -1,7 +1,10 @@
 package com.example.arena_set_cracker.service
 
+import com.example.arena_set_cracker.api.model.MtgSet
+import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.persistence.SetRepository
 import com.example.arena_set_cracker.persistence.model.SetEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import java.time.Instant
 
@@ -10,27 +13,25 @@ class SetService(
     private val dao: SetRepository
 ) {
 
-    fun getSet(user: Int, setCode: String): Int? = dao.getByUserAndCode(user, setCode)?.id
+    fun getSets(): List<MtgSet> {
+        val user = SecurityContextHolder.getContext().authentication.principal as User
 
-    fun getSets(user: Int): List<String> = dao.findAll()
-        .filter { it.user == user }
-        .map { it.code }
+        return dao.findAll()
+            .filter { it.appUser == user.id }
+            .map { it.toDomain() }
+    }
 
-    fun saveSet(user: Int, setCode: String) {
-        val existingSet = dao.getByUserAndCode(user, setCode)
+    fun saveSet(set: MtgSet): MtgSet {
+        val user = SecurityContextHolder.getContext().authentication.principal as User
 
         val entity = SetEntity(
-            code = setCode,
-            user = user,
-            createdAt = existingSet?.createdAt ?: Instant.now()
+            appUser = user.id!!,
+            code = set.code,
+            createdAt = Instant.now()
         )
 
-        dao.save(entity)
+        return dao.save(entity).toDomain()
     }
 
-    fun deleteSet(user: Int, setCode: String) {
-        val existingSet = dao.getByUserAndCode(user, setCode)!!
-
-        dao.deleteById(existingSet.id)
-    }
+    fun deleteSet(set: Int) = dao.deleteById(set)
 }

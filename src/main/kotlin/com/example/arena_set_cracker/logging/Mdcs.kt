@@ -6,7 +6,7 @@ object Mdcs {
     const val SET = "set"
 
     object RequestContext {
-        val set: String
-            get() = MDC.get(SET) ?: throw IllegalStateException("Missing set context")
+        val set: Int?
+            get() = MDC.get(SET).toIntOrNull()
     }
 }

@@ -1,10 +1,12 @@
 package com.example.arena_set_cracker.security
 
+import com.example.arena_set_cracker.api.model.User
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.JwtParser
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.SignatureAlgorithm
 import io.jsonwebtoken.security.Keys
+import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.stereotype.Component
 import java.util.*
 import java.util.function.Function
@@ -14,34 +16,38 @@ import javax.crypto.SecretKey
 @Component
 class JwtUtil {
 
-    private val secretKeyBase64 = gernerateKey()
+    private val secretKeyBase64 = generateKey()
     private val key: SecretKey = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretKeyBase64))
     private val parser: JwtParser = Jwts.parserBuilder()
         .setSigningKey(key)
         .build()
 
-    private final fun gernerateKey(): String {
+    private final fun generateKey(): String {
         val keyGen = KeyGenerator.getInstance("HmacSHA256")
         keyGen.init(256)
         return Base64.getEncoder().encodeToString(keyGen.generateKey().encoded)
     }
 
-    fun generateToken(userDetails: org.springframework.security.core.userdetails.UserDetails): String {
+    fun generateToken(user: User): String {
         val now = Date()
         val expiry = Date(now.time + 1000 * 60 * 60 * 10) // 10 hours
 
         return Jwts.builder()
-            .setSubject(userDetails.username)
+            .setSubject(user.id.toString())
+            .claim("username", user.username)
             .setIssuedAt(now)
             .setExpiration(expiry)
             .signWith(key, SignatureAlgorithm.HS256)
             .compact()
     }
 
-    fun extractUsername(token: String): String =
-        extractClaim(token, Claims::getSubject)
+    fun extractId(token: String): Int? =
+        extractClaim(token, Claims::getSubject).toIntOrNull()
 
-    fun isTokenValid(token: String, userDetails: org.springframework.security.core.userdetails.UserDetails): Boolean {
+    private fun extractUsername(token: String): String =
+        extractClaim(token) { claims -> claims["username"] as String }
+
+    fun isTokenValid(token: String, userDetails: UserDetails): Boolean {
         val username = extractUsername(token)
         return username == userDetails.username && !isTokenExpired(token)
     }

@@ -5,4 +5,6 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 
 @Repository
-interface DeckRepository : JpaRepository<DeckEntity, Int>
+interface DeckRepository : JpaRepository<DeckEntity, Int> {
+    fun findAllBySet(set: Int): List<DeckEntity>
+}

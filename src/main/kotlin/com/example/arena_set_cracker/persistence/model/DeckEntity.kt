@@ -1,7 +1,6 @@
 package com.example.arena_set_cracker.persistence.model
 
 import com.example.arena_set_cracker.api.model.Color
-import com.example.arena_set_cracker.api.model.ColorIdentity
 import com.example.arena_set_cracker.api.model.Deck
 import jakarta.persistence.*
 import java.time.Instant
@@ -41,14 +40,5 @@ data class DeckEntity(
 
     val createdAt: Instant? = null
 ) {
-    fun toDomain(): Deck = Deck(
-        id = id,
-        name = name,
-        arenaDeck = arenaDeck,
-        identity = ColorIdentity.fromColors(colors),
-        cards = cards,
-        tags = tags,
-        notes = notes,
-        createdAt = createdAt
-    )
+    fun toDomain(): Deck = Deck(id, name, arenaDeck, tags, notes)
 }

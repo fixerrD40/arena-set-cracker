@@ -1,7 +1,6 @@
 package com.example.arena_set_cracker.api
 
-import com.example.arena_set_cracker.api.model.AuthResult
-import com.example.arena_set_cracker.api.model.Credentials
+import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.security.JwtUtil
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
@@ -14,39 +13,39 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@Tag(name = "Auth Rest Controller", description = "Authenticate user")
-@RequestMapping(path = [ "authenticate" ])
-class AuthRestController(
+@Tag(name = "Authentication Rest Controller", description = "Authenticate user.")
+@RequestMapping("authenticate")
+class AuthenticationRestController(
     private val authenticationManager: AuthenticationManager,
-    private val jwtUtil: JwtUtil,
-    private val userDetailsService: UserDetailsService
+    private val jwtUtil: JwtUtil
 ) {
 
-    @Operation(summary = "Authenticate user and generate JWT token")
+    @Operation(summary = "Authenticate user and generate JWT token.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Authentication successful.",
-            content = [Content(schema = Schema(implementation = AuthResult::class))]),
-        ApiResponse(responseCode = "400", description = "Validation failed."),
+            content = [Content(schema = Schema(implementation = String::class, description = "Jwt as a string."))]
+        ),
+        ApiResponse(responseCode = "400", description = "Authentication malformed."),
         ApiResponse(responseCode = "401", description = "Invalid username or password."),
         ApiResponse(responseCode = "500", description = "Unexpected server error.")
     )
     @PostMapping
-    fun authenticateUser(@RequestBody credentials: Credentials): ResponseEntity<AuthResult> {
+    fun authenticateUser(@RequestBody credentials: User): ResponseEntity<String> {
         try {
             val authToken = UsernamePasswordAuthenticationToken(credentials.username, credentials.password)
-            authenticationManager.authenticate(authToken)
+            val authentication = authenticationManager.authenticate(authToken)
 
-            val userDetails = userDetailsService.loadUserByUsername(credentials.username)
-            val jwt = jwtUtil.generateToken(userDetails)
+            val user = authentication.principal as User
 
-            return ResponseEntity.ok(AuthResult(credentials.username, jwt))
+            val jwt = jwtUtil.generateToken(user)
+
+            return ResponseEntity.ok(jwt)
         } catch (e: BadCredentialsException) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }

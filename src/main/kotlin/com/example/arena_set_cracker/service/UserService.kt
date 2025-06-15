@@ -1,8 +1,8 @@
 package com.example.arena_set_cracker.service
 
+import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.persistence.UserRepository
-import com.example.arena_set_cracker.persistence.model.User
-import org.springframework.security.core.context.SecurityContextHolder
+import com.example.arena_set_cracker.persistence.model.UserEntity
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Component
 import java.time.Instant
@@ -13,20 +13,19 @@ class UserService(
     private val passwordEncoder: PasswordEncoder
 ) {
 
-    fun getUser(): Int? {
-        val username = SecurityContextHolder.getContext().authentication.name
-        return dao.findByUsername(username)?.id
+    fun getUser(id: Int): User {
+        return dao.findById(id).get().toDomain()
     }
 
-    fun registerUser(username: String, rawPassword: String) {
-        val encodedPassword = passwordEncoder.encode(rawPassword)
+    fun registerUser(credentials: User): User {
+        val encodedPassword = passwordEncoder.encode(credentials.password)
 
-        val newUser = User(
-            username = username,
+        val newUser = UserEntity(
+            username = credentials.username,
             password = encodedPassword,
             createdAt = Instant.now()
         )
 
-        dao.save(newUser)
+        return dao.save(newUser).toDomain()
     }
 }
