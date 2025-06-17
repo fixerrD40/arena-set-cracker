@@ -7,14 +7,18 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
-import org.springframework.stereotype.Component
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.filter.OncePerRequestFilter
 
-@Component
 class JwtRequestFilter(
     private val userService: UserService,
-    private val jwtUtil: JwtUtil
+    private val jwtUtil: JwtUtil,
+    private val protectedPaths: RequestMatcher
 ) : OncePerRequestFilter() {
+
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean {
+        return !protectedPaths.matches(request)
+    }
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
         val authHeader = request.getHeader("Authorization")

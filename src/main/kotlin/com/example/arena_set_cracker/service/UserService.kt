@@ -22,7 +22,7 @@ class UserService(
 
         val newUser = UserEntity(
             username = credentials.username,
-            password = encodedPassword,
+            passwordHash = encodedPassword,
             createdAt = Instant.now()
         )
 

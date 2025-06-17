@@ -11,8 +11,8 @@ data class UserEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Int = 0,
     val username: String,
-    val password: String,
+    val passwordHash: String,
     val createdAt: Instant? = null
 ) {
-    fun toDomain(): User = User(id, username, password)
+    fun toDomain(): User = User(id, username, passwordHash)
 }
