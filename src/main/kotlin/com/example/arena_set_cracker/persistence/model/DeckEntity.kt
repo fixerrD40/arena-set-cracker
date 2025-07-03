@@ -15,7 +15,7 @@ data class DeckEntity(
     @Column(nullable = false)
     val name: String,
 
-    val arenaDeck: String,
+    val raw: String,
 
     val set: Int,
 
@@ -40,5 +40,5 @@ data class DeckEntity(
 
     val createdAt: Instant? = null
 ) {
-    fun toDomain(): Deck = Deck(id, name, arenaDeck, tags, notes)
+    fun toDomain(): Deck = Deck(id, name, raw, tags, notes)
 }

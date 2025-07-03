@@ -5,7 +5,7 @@ import com.example.arena_set_cracker.persistence.model.DeckEntity
 data class Deck(
     val id: Int? = null,
     val name: String,
-    val arenaDeck: String,
+    val raw: String,
     val tags: Set<String> = emptySet(),
     val notes: String = "",
 ) {
@@ -13,7 +13,7 @@ data class Deck(
     fun toEntityForSet(set: Int): DeckEntity = DeckEntity(
         id = id,
         name = name,
-        arenaDeck = arenaDeck,
+        raw = raw,
         set = set,
         tags = tags,
         notes = notes,

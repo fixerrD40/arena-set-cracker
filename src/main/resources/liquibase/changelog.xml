@@ -9,4 +9,5 @@
     <include file="changelog-users.xml" relativeToChangelogFile="true" />
     <include file="changelog-sets.xml" relativeToChangelogFile="true" />
     <include file="changelog-decks-4.xml" relativeToChangelogFile="true" />
+    <include file="changelog-decks-5.xml" relativeToChangelogFile="true" />
 </databaseChangeLog>

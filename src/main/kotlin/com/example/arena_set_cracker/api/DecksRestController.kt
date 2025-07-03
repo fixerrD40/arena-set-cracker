@@ -88,7 +88,7 @@ class DecksRestController(
             content = [
                 Content(
                     mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    schema = Schema(implementation = Deck::class, requiredProperties = ["name", "arenaDeck"]),
+                    schema = Schema(implementation = Deck::class, requiredProperties = ["name", "raw"]),
                     examples = [ExampleObject(THE_PLAIN_DECK)]
                 )
             ]
@@ -139,7 +139,7 @@ class DecksRestController(
             content = [
                 Content(
                     mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    schema = Schema(implementation = Deck::class, requiredProperties = ["id", "name", "arenaDeck"]),
+                    schema = Schema(implementation = Deck::class, requiredProperties = ["id", "name", "raw"]),
                     examples= [ExampleObject(THE_PLAIN_DECK)]
                 )
             ]
@@ -186,8 +186,8 @@ class DecksRestController(
     }
 
     companion object {
-        private const val SAVED_DECKS = """[{"id":1,"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}]"""
-        private const val A_PLAIN_DECK = """{"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}"""
-        private const val THE_PLAIN_DECK = """{"id":1,"name":"Plain Deck","arenaDeck":"Deck\n60 Plains (LTR) 263"}"""
+        private const val SAVED_DECKS = """[{"id":1,"name":"Plain Deck","raw":"Deck\n60 Plains (LTR) 263"}]"""
+        private const val A_PLAIN_DECK = """{"name":"Plain Deck","raw":"Deck\n60 Plains (LTR) 263"}"""
+        private const val THE_PLAIN_DECK = """{"id":1,"name":"Plain Deck","raw":"Deck\n60 Plains (LTR) 263"}"""
     }
 }

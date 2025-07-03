@@ -35,12 +35,12 @@ class DeckService(
         // I think making this brittle is good
         val set = existing?.set ?: Mdcs.RequestContext.set!!
         val createdAt = existing?.createdAt ?: Instant.now()
-        val (colors, cards) = parseDeck(deck.arenaDeck)
+        val (colors, cards) = parseDeck(deck.raw)
 
         return DeckEntity(
             deck.id,
             deck.name,
-            deck.arenaDeck,
+            deck.raw,
             set,
             colors,
             cards,
@@ -51,7 +51,7 @@ class DeckService(
     }
 
     // TODO
-    private fun parseDeck(arenaDeck: String): Pair<Set<Color>, Map<String, Int>> {
+    private fun parseDeck(raw: String): Pair<Set<Color>, Map<String, Int>> {
         return Pair(setOf(Color.R), emptyMap())
     }
 }

@@ -1,0 +1,14 @@
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="decks-5" author="hstafford">
+        <comment>Rename arena_deck column to raw in decks table</comment>
+        <renameColumn
+                tableName="decks"
+                oldColumnName="arena_deck"
+                newColumnName="raw"
+                columnDataType="varchar" />
+    </changeSet>
+
+</databaseChangeLog>
