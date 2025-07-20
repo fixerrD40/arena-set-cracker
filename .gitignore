@@ -38,3 +38,6 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+### Python ###
+/python/sample_input.json
