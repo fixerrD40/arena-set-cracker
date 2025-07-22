@@ -47,26 +47,91 @@ def extract_synergy_frames(cards):
     """
     results = {}
     for idx, card in enumerate(cards):
-        clauses = extract_synergy_clauses(card.get("oracle_text", ""))
+        oracle_text = card.get("oracle_text", "")
+        clauses = extract_synergy_clauses(oracle_text)
+
+        # Fallback: if no trigger clauses matched, try full sentences
+        if not clauses:
+            clauses = re.split(r'[.;](?:\s|\n|$)', oracle_text)
+
         frames = []
         for clause in clauses:
+            clause = clause.strip()
+            if not clause:
+                continue
             stripped = strip_inconsequential(clause)
             if len(stripped.split()) >= 3:  # avoid junk phrases
-                frames.append({
-                    "original": clause,
-                    "stripped": stripped
-                })
+                frames.append(stripped)
         if frames:
             results[idx] = frames
     return results
+
+
+def learn_generalization_rules(synergy_frame_results, min_support=3):
+    """
+    Learn common phrase stems from stripped effect phrases.
+    Returns a list of (pattern, label).
+    """
+    phrase_counter = Counter()
+    for frames in synergy_frame_results.values():
+        for phrase in frames:
+            phrase = phrase.lower()
+            phrase_counter[phrase] += 1
+
+    # Tokenize and count common stems
+    token_counts = Counter()
+    for phrase, count in phrase_counter.items():
+        tokens = word_tokenize(phrase)
+        for n in range(2, 5):  # bigrams to 4-grams
+            for i in range(len(tokens) - n + 1):
+                ngram = ' '.join(tokens[i:i + n])
+                token_counts[ngram] += count
+
+    # Filter to frequent stems
+    common_phrases = [
+        (re.escape(ngram), ngram)
+        for ngram, count in token_counts.items()
+        if count >= min_support
+    ]
+
+    # Sort by longest matches first
+    common_phrases.sort(key=lambda x: -len(x[0]))
+
+    generalization_rules = [
+        (rf'\b{pattern}\b', label) for pattern, label in common_phrases
+    ]
+    return generalization_rules
+
+
+def post_process_synergy_frames(synergy_frame_results, generalization_rules):
+    """
+    Replace stripped phrases with their generalized label if matched.
+    Returns a dict of idx -> list of string phrases (generalized or original).
+    """
+    updated_results = {}
+    for idx, frames in synergy_frame_results.items():
+        updated = []
+        for phrase in frames:
+            lowered = phrase.lower()
+            for pattern, label in generalization_rules:
+                if re.search(pattern, lowered):
+                    updated.append(label)
+                    break
+            else:
+                updated.append(phrase)
+        updated_results[idx] = updated
+    return updated_results
 
 
 def clean_bucket_name(text):
     return text.replace("_", " ").strip().title()
 
 
-# --- Group cards by synergy buckets ---
 def group_by_synergy(cards, min_phrase_len=3):
+    """
+    Groups cards into buckets by shared synergy features.
+    Returns a dict mapping bucket label -> list of cards.
+    """
     buckets = defaultdict(list)
 
     # 1. Keywords (e.g., Flying, Deathtouch)
@@ -85,25 +150,29 @@ def group_by_synergy(cards, min_phrase_len=3):
                     if subtype.isalpha():
                         buckets[clean_bucket_name(subtype)].append(card)
 
-    # 3. Synergy phrases (from stripped effects)
+    # 3. Extract synergy frames (triggered or fallback)
     synergy_frame_results = extract_synergy_frames(cards)
+
+    print(f"\nFound {len(synergy_frame_results)} initial frames:\n")
+    for card, grouped_cards in synergy_frame_results.items():
+        print(f"  {card}: {grouped_cards}")
+
+    # 4. Learn generalization patterns dynamically
+    generalization_rules = learn_generalization_rules(synergy_frame_results)
+
+    # 5. Apply generalization labels to synergy frames
+    synergy_frame_results = post_process_synergy_frames(
+        synergy_frame_results, generalization_rules
+    )
+
+    # 6. Add cards to buckets by synergy effect
     for idx, frames in synergy_frame_results.items():
         card = cards[idx]
-        for frame in frames:
-            phrase = frame["stripped"].lower()
-            if len(phrase.split()) >= min_phrase_len:
-                buckets[clean_bucket_name(phrase)].append(card)
+        for phrase in frames:
+            phrase = strip_inconsequential(phrase.lower())
+            if len(phrase.split()) < min_phrase_len:
+                continue
+            label = clean_bucket_name(phrase)
+            buckets[label].append(card)
 
     return dict(buckets)
-
-
-# --- Optional: helper to collect synergy phrase frequency counts ---
-def collect_synergy_phrase_counts(cards, min_phrase_len=3):
-    phrase_counter = Counter()
-    synergy_frame_results = extract_synergy_frames(cards)
-    for frames in synergy_frame_results.values():
-        for frame in frames:
-            phrase = frame["stripped"].lower()
-            if len(phrase.split()) >= min_phrase_len:
-                phrase_counter[phrase] += 1
-    return phrase_counter
