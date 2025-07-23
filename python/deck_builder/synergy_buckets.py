@@ -12,22 +12,6 @@ TRIGGER_PATTERN = re.compile(
     flags=re.IGNORECASE
 )
 
-# --- Boilerplate we want to strip to isolate meaningful effect phrases ---
-STRIP_PATTERNS = [
-    r'^(at the beginning of|when(?:ever)?|as long as)\b.*?,\s*',
-    r'\byou may\b\s*',
-    r'\bif .*?,\s*',
-    r'\bdo this only once.*',
-    r'\bthis ability.*',
-]
-
-
-# --- Utility to clean phrase ---
-def strip_inconsequential(text):
-    for pattern in STRIP_PATTERNS:
-        text = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
-    return text
-
 
 # --- Extract trigger-based synergy clauses from a card's oracle text ---
 def extract_synergy_clauses(text):
@@ -41,9 +25,7 @@ def extract_synergy_clauses(text):
 def extract_synergy_frames(cards):
     """
     Returns a dict mapping card index to list of extracted synergy frames.
-    Each frame includes:
-      - original: full clause from oracle text
-      - stripped: cleaned effect clause
+    Each frame is a stripped clause (string).
     """
     results = {}
     for idx, card in enumerate(cards):
@@ -59,9 +41,8 @@ def extract_synergy_frames(cards):
             clause = clause.strip()
             if not clause:
                 continue
-            stripped = strip_inconsequential(clause)
-            if len(stripped.split()) >= 3:  # avoid junk phrases
-                frames.append(stripped)
+            if len(clause.split()) >= 3:  # avoid junk phrases
+                frames.append(clause)
         if frames:
             results[idx] = frames
     return results
@@ -105,8 +86,8 @@ def learn_generalization_rules(synergy_frame_results, min_support=3):
 
 def post_process_synergy_frames(synergy_frame_results, generalization_rules):
     """
-    Replace stripped phrases with their generalized label if matched.
-    Returns a dict of idx -> list of string phrases (generalized or original).
+    Replace phrases with their generalized label if matched.
+    Returns a dict of idx -> list of generalized or original phrases.
     """
     updated_results = {}
     for idx, frames in synergy_frame_results.items():
@@ -154,8 +135,8 @@ def group_by_synergy(cards, min_phrase_len=3):
     synergy_frame_results = extract_synergy_frames(cards)
 
     print(f"\nFound {len(synergy_frame_results)} initial frames:\n")
-    for card, grouped_cards in synergy_frame_results.items():
-        print(f"  {card}: {grouped_cards}")
+    for card, grouped_phrases in synergy_frame_results.items():
+        print(f"  {card}: {grouped_phrases}")
 
     # 4. Learn generalization patterns dynamically
     generalization_rules = learn_generalization_rules(synergy_frame_results)
@@ -169,10 +150,14 @@ def group_by_synergy(cards, min_phrase_len=3):
     for idx, frames in synergy_frame_results.items():
         card = cards[idx]
         for phrase in frames:
-            phrase = strip_inconsequential(phrase.lower())
             if len(phrase.split()) < min_phrase_len:
                 continue
             label = clean_bucket_name(phrase)
             buckets[label].append(card)
+
+    # 7. Filter out singleton buckets
+    buckets = {
+        label: group for label, group in buckets.items() if len(group) > 1
+    }
 
     return dict(buckets)
