@@ -1,18 +1,18 @@
 import re
 from collections import defaultdict, Counter
-from nltk import word_tokenize
 import nltk
 
 # Ensure tokenizer resource is available
 nltk.download('punkt_tab', quiet=True)
 
-# --- Keyword and oracle text preprocessing ---
+# --- Text preprocessing ---
+
+
 def strip_known_keywords(text, keywords, type_line):
     """
-    Removes keyword-only lines (e.g. 'Flying', 'Deathtouch') from oracle_text.
-    Preserves ability keywords like 'Equip {3}' on Equipment cards.
+    Remove known keywords and irrelevant ability lines from oracle text.
+    Preserve 'equip' lines for equipment cards.
     """
-    is_equipment = "equipment" in type_line.lower()
     lines = text.splitlines()
     stripped = []
 
@@ -20,12 +20,8 @@ def strip_known_keywords(text, keywords, type_line):
         line_clean = line.strip()
         line_lower = line_clean.lower()
 
+        # Skip exact keyword lines
         if any(line_lower == kw.lower() for kw in keywords):
-            continue
-
-        if re.match(r'^(equip|fortify|cycling|augment|level up) \{[^}]+\}$', line_lower):
-            if is_equipment and line_lower.startswith("equip "):
-                stripped.append(line_clean)
             continue
 
         stripped.append(line_clean)
@@ -33,136 +29,173 @@ def strip_known_keywords(text, keywords, type_line):
     return "\n".join(stripped)
 
 
-# --- Clause utilities ---
-def is_trigger_clause(clause):
-    return re.match(
-        r'^(when(?:ever)?|at the beginning of|each time|after|as soon as|while|as long as)\b',
-        clause.strip().lower(),
-    )
+# --- Pattern Constants ---
 
+TRIGGER_KEYWORDS = [
+    "whenever", "when", "at the beginning", "at the end"
+]
+CONDITION_KEYWORDS = [
+    "if", "as long as"
+]
+REFLEXIVE_SUBJECTS = [
+    r'\bthis\b',
+    r'\bthat\b'
+]
 
-def is_condition_clause(clause):
-    return clause.strip().lower().startswith(("if ", "as long as ", "while "))
-
-
-def split_clause_at_comma(clause):
-    if "," in clause:
-        first, rest = clause.split(",", 1)
-        return first.strip(), rest.strip()
-    return clause.strip(), None
-
-
-# --- Parse effects with nesting and modifiers ---
 CHOICE_PATTERN = re.compile(r'\bchoose one\b', flags=re.IGNORECASE)
 OPTIONAL_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
-SEQUENCE_DELIM = r', then\b'
 
-def parse_effects(text):
-    effects = []
 
-    # Split by sequencing delimiter (case-insensitive)
-    sequence_parts = re.split(r', then\b', text, flags=re.IGNORECASE)
+# --- Structural Helpers ---
 
-    if len(sequence_parts) > 1:
-        # Multiple sequence parts → one sequence effect with modifiers
-        nested_effects = []
-        for part in sequence_parts:
-            part = part.strip()
-            if not part:
+def split_oracle_text(text):
+    """
+    Purely structural splitter: returns list of syntactic clauses split on
+    punctuation and newlines.
+    """
+    text = re.sub(r'\s*([.;\n])\s*', r'\1', text)
+    matches = re.findall(r'[^.;\n]+[.;\n]', text)
+
+    return [clause.strip() for clause in matches]
+
+
+def try_extract_segment(text, keyword_list, segment_type):
+    """
+    Generalized extractor for trigger/condition blocks.
+    Applies reflexivity heuristics when subject is 'you do'.
+    """
+    lower = text.lower()
+
+    for keyword in keyword_list:
+        if lower.startswith(keyword):
+            # Find the first comma (with optional trailing whitespace)
+            match = re.search(r',\s*', text)
+            if not match:
                 continue
-            # Recursive parse in case nested structures appear inside sequence parts
-            nested_effects.extend(parse_effects(part))
-        return [{
-            "effect": nested_effects,
-            "modifiers": ["sequence"]
-        }]
 
-    # No sequencing detected, continue parsing for choice and optional
-    part = sequence_parts[0].strip()
+            # Slice the text to preserve the comma
+            split_index = match.end()
+            segment_text = text[:split_index].strip()
+            remainder = text[split_index:].strip()
 
-    if CHOICE_PATTERN.search(part):
-        choices_text = part.split('choose one', 1)[1].strip()
-        choice_delims = [r'•', r'\n', r';']
-        choices = re.split('|'.join(choice_delims), choices_text)
-        choices = [c.strip() for c in choices if c.strip()]
-        nested_effects = [parse_effects(choice)[0] if parse_effects(choice) else {"effect": choice} for choice in choices]
-        return [{
-            "effect": nested_effects,
-            "modifiers": ["choice"]
-        }]
+            segment = {"text": segment_text}
+            segment_lower = segment_text.lower()
 
-    optional = bool(OPTIONAL_PATTERN.search(part))
+            if "you do" in segment_lower:
+                segment["modifiers"] = ["reflexive"]
+            else:
+                # Remove the keyword only (not the comma)
+                stripped = re.sub(rf'^{keyword}\s+', '', segment_text.rstrip(','), flags=re.IGNORECASE).strip()
+                if stripped:
+                    segment["subjects"] = [stripped]
 
-    sub_clauses = re.split(r'[.;]\s*', part)
-    if len(sub_clauses) > 1:
-        nested = []
-        for clause in sub_clauses:
-            clause = clause.strip()
-            if clause:
-                nested.extend(parse_effects(clause))
-        if len(nested) > 1:
-            mods = ["sequence"]
-            if optional:
-                mods.append("optional")
-            return [{
-                "effect": nested,
-                "modifiers": mods
-            }]
-        else:
-            eff = nested[0]
-            if optional:
-                eff.setdefault("modifiers", [])
-                eff["modifiers"].append("optional")
-            return [eff]
+            return {segment_type: segment, "remainder": remainder}
 
-    effect_obj = {"effect": part}
-    if optional:
-        effect_obj["modifiers"] = ["optional"]
-    return [effect_obj]
+    return None
 
 
-# --- Parse structured clause blocks ---
+def parse_effect_structure(text):
+    """
+    Parses an effect string into a list of structured nested effects.
+    Handles optionality, sequencing, and plain text.
+    """
+    text = text.strip()
+    effects = []
+    modifiers = []
+
+    # Handle optional effects
+    if OPTIONAL_PATTERN.search(text):
+        clean = OPTIONAL_PATTERN.sub('', text).strip().rstrip('.;\n')
+        effects.append({"text": clean})
+        modifiers.append("optional")
+
+    # Handle sequencing
+    elif ', then' in text.lower():
+        parts = re.split(r', then\b', text, flags=re.IGNORECASE)
+        effects.extend({"text": part.strip()} for part in parts)
+        modifiers.append("sequence")
+
+    # Build main effect dict
+    effect = {"text": text}
+    if effects:
+        effect["effects"] = effects
+    if modifiers:
+        effect["modifiers"] = modifiers
+
+    return [effect]
+
+
+def parse_choice_effects(header_text, bullets):
+    effects = []
+    for bullet in bullets:
+        clean = bullet.lstrip("• ").strip()
+        clean = clean.rstrip('.;\n').strip()
+        effects.append({
+            "text": bullet.strip(),
+            "effects": [{"text": clean}]
+        })
+    return [{
+        "text": f"{header_text} {' '.join(bullets)}",
+        "effects": effects,
+        "modifiers": ["choice"]
+    }]
+
+
+# --- Top-Level Parser ---
+
 def parse_oracle_text_to_blocks(text):
-    raw_chunks = []
-    for line in text.splitlines():
-        parts = re.split(r'[.;](?:\s|\n|$)', line)
-        raw_chunks.extend([p.strip() for p in parts if p.strip()])
-
+    clauses = split_oracle_text(text)
     blocks = []
     i = 0
-    while i < len(raw_chunks):
-        clause = raw_chunks[i]
 
-        # Trigger clause
-        if is_trigger_clause(clause):
-            trigger, effect = split_clause_at_comma(clause)
-            block = {"trigger": trigger}
-            if effect:
-                # effect can be nested effects
-                block["effect"] = parse_effects(effect)
-            blocks.append(block)
-            i += 1
-            continue
+    while i < len(clauses):
+        clause = clauses[i]
+        block = {"text": clause}
+        working = clause
 
-        # Condition clause
-        elif is_condition_clause(clause):
-            condition, effect = split_clause_at_comma(clause)
-            block = {"condition": condition}
-            if effect:
-                block["effect"] = parse_effects(effect)
-            blocks.append(block)
-            i += 1
-            continue
+        # Try to extract trigger
+        trig = try_extract_segment(working, TRIGGER_KEYWORDS, "trigger")
+        if trig:
+            block["trigger"] = trig["trigger"]
+            working = trig["remainder"]
 
-        # Standalone effect
+        # Try to extract condition
+        cond = try_extract_segment(working, CONDITION_KEYWORDS, "condition")
+        if cond:
+            block["condition"] = cond["condition"]
+            working = cond["remainder"]
+
+        # Lookahead for choice bullets
+        if CHOICE_PATTERN.search(working):
+            bullets = []
+            j = i + 1
+            while j < len(clauses) and clauses[j].strip().startswith("•"):
+                bullets.append(clauses[j])
+                j += 1
+            full_clause = f"{clause} {' '.join(bullets)}"
+            block["text"] = full_clause
+            block["effects"] = parse_choice_effects(working, bullets)
+            i = j
         else:
-            blocks.append({"effect": parse_effects(clause)})
+            block["effects"] = parse_effect_structure(working)
             i += 1
+
+        # Nest reflexive trigger blocks inside previous effect
+        if (
+            block.get("trigger")
+            and "reflexive" in block["trigger"].get("modifiers", [])
+            and blocks
+        ):
+            blocks[-1].setdefault("effects", []).append(block)
+        else:
+            blocks.append(block)
 
     return blocks
 
 
 # --- Frame extraction per card ---
+
+
 def extract_synergy_frames(cards):
     results = {}
     for idx, card in enumerate(cards):
@@ -175,90 +208,73 @@ def extract_synergy_frames(cards):
     return results
 
 
-# --- Rule learning from effects only ---
+# --- Generalization rule learning (placeholder) ---
+
+
 def learn_generalization_rules(synergy_frame_results, min_support=3):
-    phrase_counter = Counter()
-    for blocks in synergy_frame_results.values():
-        for block in blocks:
-            effects = block.get("effect")
-            # Flatten nested effects
-            flat_effects = flatten_effects(effects)
-            for phrase in flat_effects:
-                phrase_counter[phrase.lower()] += 1
+    """
+    Placeholder function for learning generalization rules
+    from synergy frame effects. Currently returns empty dict.
+    """
+    # You can implement logic here for clustering or
+    # extracting general patterns in synergy frames.
+    return {}
 
-    token_counts = Counter()
-    for phrase, count in phrase_counter.items():
-        tokens = word_tokenize(phrase)
-        for n in range(2, 5):
-            for i in range(len(tokens) - n + 1):
-                ngram = ' '.join(tokens[i:i + n])
-                token_counts[ngram] += count
 
-    common_phrases = [
-        (re.escape(ngram), ngram)
-        for ngram, count in token_counts.items()
-        if count >= min_support
-    ]
-    common_phrases.sort(key=lambda x: -len(x[0]))
+# --- Post-processing synergy frames (dummy pass-through) ---
 
-    generalization_rules = [
-        (rf'\b{pattern}\b', label) for pattern, label in common_phrases
-    ]
-    return generalization_rules
+
+def post_process_synergy_frames(synergy_frame_results, generalization_rules):
+    """
+    Apply generalization rules or cleanups on synergy frames.
+    Currently a no-op that returns input as-is.
+    """
+    return synergy_frame_results
+
+
+# --- Flatten nested effects into list of phrases ---
 
 
 def flatten_effects(effects):
     """
-    Recursively flatten nested effects into strings for counting
+    Recursively flatten nested effect structures into
+    a list of string phrases for bucketing.
     """
-    if not effects:
-        return []
-    if isinstance(effects, str):
-        return [effects]
+    phrases = []
+
     if isinstance(effects, list):
-        flat = []
-        for e in effects:
-            flat.extend(flatten_effects(e))
-        return flat
-    if isinstance(effects, dict):
+        for eff in effects:
+            phrases.extend(flatten_effects(eff))
+    elif isinstance(effects, dict):
         eff = effects.get("effect")
-        return flatten_effects(eff)
-    return []
+        if isinstance(eff, list):
+            phrases.extend(flatten_effects(eff))
+        elif isinstance(eff, str):
+            phrases.append(eff)
+    elif isinstance(effects, str):
+        phrases.append(effects)
+
+    return phrases
 
 
-def post_process_synergy_frames(synergy_frame_results, generalization_rules):
-    updated_results = {}
-    for idx, blocks in synergy_frame_results.items():
-        updated = []
-        for block in blocks:
-            effects = block.get("effect")
-            if not effects:
-                updated.append(block)
-                continue
-            # Flatten to list to check each effect string
-            flattened = flatten_effects(effects)
-            replaced = False
-            for phrase in flattened:
-                lowered = phrase.lower()
-                for pattern, label in generalization_rules:
-                    if re.search(pattern, lowered):
-                        # Replace top-level effect if possible
-                        block["effect"] = label
-                        replaced = True
-                        break
-                if replaced:
-                    break
-            updated.append(block)
-        updated_results[idx] = updated
-    return updated_results
+# --- Bucket cleaning helper ---
 
 
-def clean_bucket_name(text):
-    return text.replace("_", " ").strip().title()
+def clean_bucket_name(name):
+    """
+    Normalize bucket label strings for consistent keys.
+    """
+    return re.sub(r'\W+', '_', name.lower()).strip('_')
 
 
-# --- Grouping logic ---
+# --- Main grouping function ---
+
+
 def group_by_synergy(cards, min_phrase_len=3):
+    """
+    Groups cards by keywords, creature subtypes,
+    and structured synergy effect phrases.
+    """
     buckets = defaultdict(list)
 
     # 1. Keywords
@@ -289,17 +305,16 @@ def group_by_synergy(cards, min_phrase_len=3):
     # 4. Learn generalizations
     generalization_rules = learn_generalization_rules(synergy_frame_results)
 
-    # 5. Apply to effects
+    # 5. Post-process synergy frames
     synergy_frame_results = post_process_synergy_frames(synergy_frame_results, generalization_rules)
 
-    # 6. Bucket by effects
+    # 6. Bucket by effect phrases
     for idx, blocks in synergy_frame_results.items():
         card = cards[idx]
         for block in blocks:
             effects = block.get("effect")
             if not effects:
                 continue
-            # Flatten nested effects to label
             flattened = flatten_effects(effects)
             for phrase in flattened:
                 if phrase and len(phrase.split()) >= min_phrase_len:
@@ -307,8 +322,6 @@ def group_by_synergy(cards, min_phrase_len=3):
                     buckets[label].append(card)
 
     # 7. Filter singleton buckets
-    buckets = {
-        label: group for label, group in buckets.items() if len(group) > 1
-    }
+    buckets = {label: group for label, group in buckets.items() if len(group) > 1}
 
     return dict(buckets)
