@@ -7,15 +7,14 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
             {
                 "name": "Gorbag of Minas Morgul",
                 "rarity": "uncommon",
-                "color_identity": ["B"],
-                "type_line": "Legendary Creature — Orc Soldier",
-                "oracle_text": (
-                    "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it. "
-                    "When you do, choose one —\n"
-                    "• Draw a card.\n"
-                    "• Create a Treasure token."
-                ),
-                "keywords": []
+                "color_identity": [
+                    "B"
+                ],
+                "type_line": "Legendary Creature \u2014 Orc Soldier",
+                "oracle_text": "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it. When you do, choose one \u2014\n\u2022 Draw a card.\n\u2022 Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+                "keywords": [
+                    "Treasure"
+                ]
             }
         ]
 

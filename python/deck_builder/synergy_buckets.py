@@ -10,8 +10,7 @@ nltk.download('punkt_tab', quiet=True)
 
 def strip_known_keywords(text, keywords, type_line):
     """
-    Remove known keywords and irrelevant ability lines from oracle text.
-    Preserve 'equip' lines for equipment cards.
+    Remove known keyword lines and aggressively strip all parenthetical clauses.
     """
     lines = text.splitlines()
     stripped = []
@@ -24,7 +23,12 @@ def strip_known_keywords(text, keywords, type_line):
         if any(line_lower == kw.lower() for kw in keywords):
             continue
 
-        stripped.append(line_clean)
+        # Strip all parenthetical phrases aggressively
+        line_clean = re.sub(r'\([^)]*\)', '', line_clean).strip()
+
+        # Remove empty lines that may result
+        if line_clean:
+            stripped.append(line_clean)
 
     return "\n".join(stripped)
 
