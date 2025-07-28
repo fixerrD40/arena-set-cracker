@@ -5,40 +5,12 @@ import nltk
 # Ensure tokenizer resource is available
 nltk.download('punkt_tab', quiet=True)
 
-# --- Text preprocessing ---
-
-
-def strip_known_keywords(text, keywords, type_line):
-    """
-    Remove known keyword lines and aggressively strip all parenthetical clauses.
-    """
-    lines = text.splitlines()
-    stripped = []
-
-    for line in lines:
-        line_clean = line.strip()
-        line_lower = line_clean.lower()
-
-        # Skip exact keyword lines
-        if any(line_lower == kw.lower() for kw in keywords):
-            continue
-
-        # Strip all parenthetical phrases aggressively
-        line_clean = re.sub(r'\([^)]*\)', '', line_clean).strip()
-
-        # Remove empty lines that may result
-        if line_clean:
-            stripped.append(line_clean)
-
-    return "\n".join(stripped)
-
-
 # --- Pattern Constants ---
 
-TRIGGER_KEYWORDS = [
-    "whenever", "when", "at the beginning", "at the end"
+TRIGGER_PREFIX = [
+    "whenever", "when", "at the beginning"
 ]
-CONDITION_KEYWORDS = [
+CONDITION_PREFIX = [
     "if", "as long as"
 ]
 REFLEXIVE_SUBJECTS = [
@@ -49,6 +21,44 @@ REFLEXIVE_SUBJECTS = [
 CHOICE_PATTERN = re.compile(r'\bchoose one\b', flags=re.IGNORECASE)
 OPTIONAL_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
 
+CORE_KEYWORDS = [
+    "deathtouch", "double strike", "first strike", "flash", "flying", "haste", "lifelink", "reach", "trample", "vigilance"
+]
+
+# --- Text preprocessing ---
+
+
+def parse_keywords(text, keywords):
+    """
+    Remove core keywords and aggressively strip all parenthetical clauses.
+    """
+    lines = text.splitlines()
+    stripped = []
+
+    core_keywords = list(set([kw.lower() for kw in keywords]) & set(CORE_KEYWORDS))
+
+    for line in lines:
+        line_clean = line.strip()
+
+        # Strip all parenthetical phrases aggressively
+        line_clean = re.sub(r'\([^)]*\)', '', line_clean).strip()
+        line_lower = line_clean.lower()
+
+        # Process keyword lines
+        for kw in core_keywords:
+            pattern = rf"^{re.escape(kw)}\b"
+            if re.match(pattern, line_lower):
+                clauses = [clause.strip() for clause in line_clean.split(",")]
+                filtered_clauses = [c for c in clauses if c.lower() not in core_keywords]
+                line_clean = ", ".join(filtered_clauses).strip()
+                break
+
+        # Remove empty lines that may result
+        if line_clean:
+            stripped.append(line_clean)
+
+    return core_keywords, "\n".join(stripped)
+
 
 # --- Structural Helpers ---
 
@@ -57,10 +67,11 @@ def split_oracle_text(text):
     Purely structural splitter: returns list of syntactic clauses split on
     punctuation and newlines.
     """
-    text = re.sub(r'\s*([.;\n])\s*', r'\1', text)
-    matches = re.findall(r'[^.;\n]+[.;\n]', text)
+    text = re.sub(r'\s*([.;\n])\s*', r'\1', text.strip())
+    pattern = r'[^.;\n]+[.;\n]?'
+    matches = re.findall(pattern, text)
 
-    return [clause.strip() for clause in matches]
+    return [clause.strip() for clause in matches if clause.strip()]
 
 
 def try_extract_segment(text, keyword_list, segment_type):
@@ -158,13 +169,13 @@ def parse_oracle_text_to_blocks(text):
         working = clause
 
         # Try to extract trigger
-        trig = try_extract_segment(working, TRIGGER_KEYWORDS, "trigger")
+        trig = try_extract_segment(working, TRIGGER_PREFIX, "trigger")
         if trig:
             block["trigger"] = trig["trigger"]
             working = trig["remainder"]
 
         # Try to extract condition
-        cond = try_extract_segment(working, CONDITION_KEYWORDS, "condition")
+        cond = try_extract_segment(working, CONDITION_PREFIX, "condition")
         if cond:
             block["condition"] = cond["condition"]
             working = cond["remainder"]
@@ -205,9 +216,8 @@ def extract_synergy_frames(cards):
     for idx, card in enumerate(cards):
         oracle_text = card.get("oracle_text", "")
         keywords = card.get("keywords", [])
-        type_line = card.get("type_line", "")
-        cleaned_text = strip_known_keywords(oracle_text, keywords, type_line)
-        blocks = parse_oracle_text_to_blocks(cleaned_text)
+        keyword_text, remainder = parse_keywords(oracle_text, keywords)
+        blocks = parse_oracle_text_to_blocks(remainder)
         results[idx] = blocks
     return results
 
