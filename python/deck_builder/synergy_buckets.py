@@ -8,16 +8,13 @@ nltk.download('punkt_tab', quiet=True)
 # --- Pattern Constants ---
 
 TRIGGER_PREFIX = [
-    "whenever", "when", "at the beginning"
+    "whenever", "when", "at the beginning", "as", "after"
 ]
 CONDITION_PREFIX = [
     "if", "as long as"
 ]
-REFLEXIVE_SUBJECTS = [
-    r'\bthis\b',
-    r'\bthat\b'
-]
 
+REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", flags=re.IGNORECASE)
 CHOICE_PATTERN = re.compile(r'\bchoose one\b', flags=re.IGNORECASE)
 OPTIONAL_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
 
@@ -28,7 +25,7 @@ CORE_KEYWORDS = [
 # --- Text preprocessing ---
 
 
-def parse_keywords(text, keywords):
+def strip_keywords(text, keywords):
     """
     Remove core keywords and aggressively strip all parenthetical clauses.
     """
@@ -216,7 +213,7 @@ def extract_synergy_frames(cards):
     for idx, card in enumerate(cards):
         oracle_text = card.get("oracle_text", "")
         keywords = card.get("keywords", [])
-        keyword_text, remainder = parse_keywords(oracle_text, keywords)
+        keyword_text, remainder = strip_keywords(oracle_text, keywords)
         blocks = parse_oracle_text_to_blocks(remainder)
         results[idx] = blocks
     return results
@@ -339,3 +336,116 @@ def group_by_synergy(cards, min_phrase_len=3):
     buckets = {label: group for label, group in buckets.items() if len(group) > 1}
 
     return dict(buckets)
+
+ALL_PREFIXES = [("trigger", p) for p in TRIGGER_PREFIX] + [("condition", p) for p in CONDITION_PREFIX]
+ALL_PREFIXES.sort(key=lambda x: -len(x[1]))  # Longest match first
+
+# Precompile regexes with word boundaries
+PREFIX_PATTERNS = [
+    (t, p, re.compile(rf'\b{re.escape(p)}\b', re.IGNORECASE))
+    for t, p in ALL_PREFIXES
+]
+REFLEXIVE_SUBJECT_PATTERN = re.compile(
+    r'\b(this|that)\b\s+\b\w+\b',
+    flags=re.IGNORECASE
+)
+
+
+def match_best_prefix(text, start):
+    for type, prefix, pattern in PREFIX_PATTERNS:
+        match = pattern.match(text, pos=start)
+        if match:
+            return {
+                "type": type,
+                "prefix": prefix,
+                "start": match.start(),
+                "end": match.end(),
+                "text": text[match.start():match.end()]
+            }
+    return None
+
+
+def mark_structural_elements(text):
+    """
+    Traverse oracle text and mark structural elements.
+    """
+    marks = []
+    lower = text.lower()
+    i = 0
+    seen_choice = False
+
+    while i < len(text):
+        ch = text[i]
+
+        # Mark delimiters at every position they appear
+        if ch in {'.', ';', '\n'}:
+            marks.append({
+                "type": "delimiter",
+                "start": i,
+                "end": i + 1,
+                "text": ch
+            })
+            i += 1
+            continue
+
+        # Only try clause pattern matches at start of a word
+        if ch.isalpha() and (i == 0 or not text[i - 1].isalnum()):
+            # match triggers and conditions
+            match = match_best_prefix(text, i)
+            if match:
+                marks.append(match)
+                i = match["end"]
+                continue
+
+            # Reflexive subordinate clause
+            match = REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN.match(lower, i)
+            if match:
+                marks.append({
+                    "type": "reflexive_subordinate_clause",
+                    "start": match.start(),
+                    "end": match.end(),
+                    "text": text[match.start():match.end()]
+                })
+                i = match.end()
+                continue
+
+            # Reflexive subject
+            reflexive_subj_match = REFLEXIVE_SUBJECT_PATTERN.match(lower, i)
+            if reflexive_subj_match:
+                marks.append({
+                    "type": "reflexive_subject",
+                    "start": reflexive_subj_match.start(),
+                    "end": reflexive_subj_match.end(),
+                    "text": text[reflexive_subj_match.start():reflexive_subj_match.end()]
+                })
+                i = reflexive_subj_match.end()
+                continue
+
+            # Optional pattern
+            opt_match = OPTIONAL_PATTERN.match(lower, i)
+            if opt_match:
+                marks.append({
+                    "type": "optional",
+                    "start": opt_match.start(),
+                    "end": opt_match.end(),
+                    "text": text[opt_match.start():opt_match.end()]
+                })
+                i = opt_match.end()
+                continue
+
+            # Choice pattern
+            choice_match = CHOICE_PATTERN.match(lower, i)
+            if choice_match and not seen_choice:
+                marks.append({
+                    "type": "choice",
+                    "start": choice_match.start(),
+                    "end": choice_match.end(),
+                    "text": text[choice_match.start():choice_match.end()]
+                })
+                seen_choice = True
+                i = choice_match.end()
+                continue
+
+        i += 1
+
+    return sorted(marks, key=lambda m: m["start"])
