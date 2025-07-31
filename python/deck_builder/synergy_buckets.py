@@ -449,3 +449,70 @@ def mark_structural_elements(text):
         i += 1
 
     return sorted(marks, key=lambda m: m["start"])
+
+def parse_effects(text, marks):
+    """
+    Splits oracle text into root-level effects based on delimiters,
+    but merges segments if the following segment contains a reflexive subordinate clause anywhere,
+    or if the current segment contains a forward conjunction (e.g., choice).
+
+    Returns a list of parsed effects (placeholders for now).
+    """
+
+    effects = []
+    n = len(marks)
+    i = 0
+    start = 0
+
+    def marks_in_range(s, e):
+        return [m for m in marks if s <= m['start'] < e]
+
+    while i < n:
+        mark = marks[i]
+
+        if mark['type'] == 'delimiter':
+            # Group adjacent delimiters together (e.g., ".\n")
+            end_pos = mark['end']
+            j = i + 1
+            while j < n and marks[j]['type'] == 'delimiter' and marks[j]['start'] == end_pos:
+                end_pos = marks[j]['end']
+                j += 1
+
+            # Current segment is from start up to end_pos
+            current_marks = marks_in_range(start, end_pos)
+
+            # Check for forward join: does current segment have a 'choice'?
+            forward_join = any(m['type'] == 'choice' for m in current_marks)
+
+            # Check for backward join: does next segment (up to next few marks) contain 'reflexive_subordinate_clause'?
+            backward_join = False
+            lookahead_limit = 3
+            k = j
+            for offset in range(k, min(k + lookahead_limit, n)):
+                if marks[offset]['type'] == 'reflexive_subordinate_clause':
+                    backward_join = True
+                    break
+
+            # If either join condition is true, do NOT split here; continue past these delimiters
+            if forward_join or backward_join:
+                i = j
+                # do not update start, keep absorbing
+                continue
+
+            # Otherwise, safe to split effect here
+            segment_text = text[start:end_pos]
+            # Placeholder for actual parse_effect call
+            effects.append(segment_text)
+
+            start = end_pos
+            i = j
+            continue
+
+        i += 1
+
+    # Add any trailing text as last effect
+    if start < len(text):
+        segment_text = text[start:]
+        effects.append(segment_text)
+
+    return effects
