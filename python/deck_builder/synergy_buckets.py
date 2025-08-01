@@ -1,29 +1,46 @@
 import re
-from collections import defaultdict, Counter
-import nltk
-
-# Ensure tokenizer resource is available
-nltk.download('punkt_tab', quiet=True)
 
 # --- Pattern Constants ---
 
-TRIGGER_PREFIX = [
-    "whenever", "when", "at the beginning", "as", "after"
-]
-CONDITION_PREFIX = [
-    "if", "as long as"
-]
+TRIGGER = "trigger"
+CONDITION = "condition"
+TRIGGER_PREFIX = ["whenever", "when", "at the beginning", "as", "after"]
+CONDITION_PREFIX = ["if", "as long as"]
 
 REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", flags=re.IGNORECASE)
-CHOICE_PATTERN = re.compile(r'\bchoose one\b', flags=re.IGNORECASE)
-OPTIONAL_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
+CHOICE_EFFECT_PATTERN = re.compile(r'\bchoose one\b', flags=re.IGNORECASE)
+OPTIONAL_EFFECT_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
+EFFECT_END_PATTERN = r'[.;\n]'
 
 CORE_KEYWORDS = [
-    "deathtouch", "double strike", "first strike", "flash", "flying", "haste", "lifelink", "reach", "trample", "vigilance"
+    "deathtouch", "double strike", "first strike", "flash", "flying", "haste",
+    "lifelink", "reach", "trample", "vigilance"
 ]
 
-# --- Text preprocessing ---
+ALL_PREFIXES = [(TRIGGER, p) for p in TRIGGER_PREFIX] + [(CONDITION, p) for p in CONDITION_PREFIX]
+ALL_PREFIXES.sort(key=lambda x: -len(x[1]))  # Longest match first
 
+PREFIX_PATTERNS = [
+    (t, p, re.compile(rf'\b{re.escape(p)}\b', re.IGNORECASE))
+    for t, p in ALL_PREFIXES
+]
+
+REFLEXIVE_SUBJECT_PATTERN = re.compile(r'\b(this|that)\b\s+\b\w+\b', flags=re.IGNORECASE)
+
+
+def extract_synergy_frames(cards):
+    result = {}
+    for idx, card in enumerate(cards):
+        oracle_text = card.get("oracle_text", "")
+        keywords = card.get("keywords", [])
+        keyword_text, remainder = strip_keywords(oracle_text, keywords)
+        marks = mark_structural_elements(remainder)
+        effects = parse_effects(remainder, marks)
+        result[card["name"]] = effects
+    return result
+
+
+# --- Text Preprocessing ---
 
 def strip_keywords(text, keywords):
     """
@@ -35,10 +52,8 @@ def strip_keywords(text, keywords):
     core_keywords = list(set([kw.lower() for kw in keywords]) & set(CORE_KEYWORDS))
 
     for line in lines:
-        line_clean = line.strip()
-
         # Strip all parenthetical phrases aggressively
-        line_clean = re.sub(r'\([^)]*\)', '', line_clean).strip()
+        line_clean = re.sub(r'\([^)]*\)', '', line.strip())
         line_lower = line_clean.lower()
 
         # Process keyword lines
@@ -57,299 +72,7 @@ def strip_keywords(text, keywords):
     return core_keywords, "\n".join(stripped)
 
 
-# --- Structural Helpers ---
-
-def split_oracle_text(text):
-    """
-    Purely structural splitter: returns list of syntactic clauses split on
-    punctuation and newlines.
-    """
-    text = re.sub(r'\s*([.;\n])\s*', r'\1', text.strip())
-    pattern = r'[^.;\n]+[.;\n]?'
-    matches = re.findall(pattern, text)
-
-    return [clause.strip() for clause in matches if clause.strip()]
-
-
-def try_extract_segment(text, keyword_list, segment_type):
-    """
-    Generalized extractor for trigger/condition blocks.
-    Applies reflexivity heuristics when subject is 'you do'.
-    """
-    lower = text.lower()
-
-    for keyword in keyword_list:
-        if lower.startswith(keyword):
-            # Find the first comma (with optional trailing whitespace)
-            match = re.search(r',\s*', text)
-            if not match:
-                continue
-
-            # Slice the text to preserve the comma
-            split_index = match.end()
-            segment_text = text[:split_index].strip()
-            remainder = text[split_index:].strip()
-
-            segment = {"text": segment_text}
-            segment_lower = segment_text.lower()
-
-            if "you do" in segment_lower:
-                segment["modifiers"] = ["reflexive"]
-            else:
-                # Remove the keyword only (not the comma)
-                stripped = re.sub(rf'^{keyword}\s+', '', segment_text.rstrip(','), flags=re.IGNORECASE).strip()
-                if stripped:
-                    segment["subjects"] = [stripped]
-
-            return {segment_type: segment, "remainder": remainder}
-
-    return None
-
-
-def parse_effect_structure(text):
-    """
-    Parses an effect string into a list of structured nested effects.
-    Handles optionality, sequencing, and plain text.
-    """
-    text = text.strip()
-    effects = []
-    modifiers = []
-
-    # Handle optional effects
-    if OPTIONAL_PATTERN.search(text):
-        clean = OPTIONAL_PATTERN.sub('', text).strip().rstrip('.;\n')
-        effects.append({"text": clean})
-        modifiers.append("optional")
-
-    # Handle sequencing
-    elif ', then' in text.lower():
-        parts = re.split(r', then\b', text, flags=re.IGNORECASE)
-        effects.extend({"text": part.strip()} for part in parts)
-        modifiers.append("sequence")
-
-    # Build main effect dict
-    effect = {"text": text}
-    if effects:
-        effect["effects"] = effects
-    if modifiers:
-        effect["modifiers"] = modifiers
-
-    return [effect]
-
-
-def parse_choice_effects(header_text, bullets):
-    effects = []
-    for bullet in bullets:
-        clean = bullet.lstrip("• ").strip()
-        clean = clean.rstrip('.;\n').strip()
-        effects.append({
-            "text": bullet.strip(),
-            "effects": [{"text": clean}]
-        })
-    return [{
-        "text": f"{header_text} {' '.join(bullets)}",
-        "effects": effects,
-        "modifiers": ["choice"]
-    }]
-
-
-# --- Top-Level Parser ---
-
-def parse_oracle_text_to_blocks(text):
-    clauses = split_oracle_text(text)
-    blocks = []
-    i = 0
-
-    while i < len(clauses):
-        clause = clauses[i]
-        block = {"text": clause}
-        working = clause
-
-        # Try to extract trigger
-        trig = try_extract_segment(working, TRIGGER_PREFIX, "trigger")
-        if trig:
-            block["trigger"] = trig["trigger"]
-            working = trig["remainder"]
-
-        # Try to extract condition
-        cond = try_extract_segment(working, CONDITION_PREFIX, "condition")
-        if cond:
-            block["condition"] = cond["condition"]
-            working = cond["remainder"]
-
-        # Lookahead for choice bullets
-        if CHOICE_PATTERN.search(working):
-            bullets = []
-            j = i + 1
-            while j < len(clauses) and clauses[j].strip().startswith("•"):
-                bullets.append(clauses[j])
-                j += 1
-            full_clause = f"{clause} {' '.join(bullets)}"
-            block["text"] = full_clause
-            block["effects"] = parse_choice_effects(working, bullets)
-            i = j
-        else:
-            block["effects"] = parse_effect_structure(working)
-            i += 1
-
-        # Nest reflexive trigger blocks inside previous effect
-        if (
-            block.get("trigger")
-            and "reflexive" in block["trigger"].get("modifiers", [])
-            and blocks
-        ):
-            blocks[-1].setdefault("effects", []).append(block)
-        else:
-            blocks.append(block)
-
-    return blocks
-
-
-# --- Frame extraction per card ---
-
-
-def extract_synergy_frames(cards):
-    results = {}
-    for idx, card in enumerate(cards):
-        oracle_text = card.get("oracle_text", "")
-        keywords = card.get("keywords", [])
-        keyword_text, remainder = strip_keywords(oracle_text, keywords)
-        blocks = parse_oracle_text_to_blocks(remainder)
-        results[idx] = blocks
-    return results
-
-
-# --- Generalization rule learning (placeholder) ---
-
-
-def learn_generalization_rules(synergy_frame_results, min_support=3):
-    """
-    Placeholder function for learning generalization rules
-    from synergy frame effects. Currently returns empty dict.
-    """
-    # You can implement logic here for clustering or
-    # extracting general patterns in synergy frames.
-    return {}
-
-
-# --- Post-processing synergy frames (dummy pass-through) ---
-
-
-def post_process_synergy_frames(synergy_frame_results, generalization_rules):
-    """
-    Apply generalization rules or cleanups on synergy frames.
-    Currently a no-op that returns input as-is.
-    """
-    return synergy_frame_results
-
-
-# --- Flatten nested effects into list of phrases ---
-
-
-def flatten_effects(effects):
-    """
-    Recursively flatten nested effect structures into
-    a list of string phrases for bucketing.
-    """
-    phrases = []
-
-    if isinstance(effects, list):
-        for eff in effects:
-            phrases.extend(flatten_effects(eff))
-    elif isinstance(effects, dict):
-        eff = effects.get("effect")
-        if isinstance(eff, list):
-            phrases.extend(flatten_effects(eff))
-        elif isinstance(eff, str):
-            phrases.append(eff)
-    elif isinstance(effects, str):
-        phrases.append(effects)
-
-    return phrases
-
-
-# --- Bucket cleaning helper ---
-
-
-def clean_bucket_name(name):
-    """
-    Normalize bucket label strings for consistent keys.
-    """
-    return re.sub(r'\W+', '_', name.lower()).strip('_')
-
-
-# --- Main grouping function ---
-
-
-def group_by_synergy(cards, min_phrase_len=3):
-    """
-    Groups cards by keywords, creature subtypes,
-    and structured synergy effect phrases.
-    """
-    buckets = defaultdict(list)
-
-    # 1. Keywords
-    for card in cards:
-        for keyword in card.get("keywords", []):
-            buckets[clean_bucket_name(keyword)].append(card)
-
-    # 2. Creature subtypes
-    for card in cards:
-        type_line = card.get("type_line", "").lower()
-        if "creature" in type_line:
-            match = re.search(r"creature\s+—\s+(.+)", type_line)
-            if match:
-                subtypes = match.group(1).split()
-                for subtype in subtypes:
-                    if subtype.isalpha():
-                        buckets[clean_bucket_name(subtype)].append(card)
-
-    # 3. Structured frame extraction
-    synergy_frame_results = extract_synergy_frames(cards)
-
-    print(f"\nFound {len(synergy_frame_results)} structured frame sets:\n")
-    for idx, blocks in synergy_frame_results.items():
-        print(f"Card {idx}:")
-        for block in blocks:
-            print("  ", block)
-
-    # 4. Learn generalizations
-    generalization_rules = learn_generalization_rules(synergy_frame_results)
-
-    # 5. Post-process synergy frames
-    synergy_frame_results = post_process_synergy_frames(synergy_frame_results, generalization_rules)
-
-    # 6. Bucket by effect phrases
-    for idx, blocks in synergy_frame_results.items():
-        card = cards[idx]
-        for block in blocks:
-            effects = block.get("effect")
-            if not effects:
-                continue
-            flattened = flatten_effects(effects)
-            for phrase in flattened:
-                if phrase and len(phrase.split()) >= min_phrase_len:
-                    label = clean_bucket_name(phrase)
-                    buckets[label].append(card)
-
-    # 7. Filter singleton buckets
-    buckets = {label: group for label, group in buckets.items() if len(group) > 1}
-
-    return dict(buckets)
-
-ALL_PREFIXES = [("trigger", p) for p in TRIGGER_PREFIX] + [("condition", p) for p in CONDITION_PREFIX]
-ALL_PREFIXES.sort(key=lambda x: -len(x[1]))  # Longest match first
-
-# Precompile regexes with word boundaries
-PREFIX_PATTERNS = [
-    (t, p, re.compile(rf'\b{re.escape(p)}\b', re.IGNORECASE))
-    for t, p in ALL_PREFIXES
-]
-REFLEXIVE_SUBJECT_PATTERN = re.compile(
-    r'\b(this|that)\b\s+\b\w+\b',
-    flags=re.IGNORECASE
-)
-
+# --- Structural Marking ---
 
 def match_best_prefix(text, start):
     for type, prefix, pattern in PREFIX_PATTERNS:
@@ -379,12 +102,7 @@ def mark_structural_elements(text):
 
         # Mark delimiters at every position they appear
         if ch in {'.', ';', '\n'}:
-            marks.append({
-                "type": "delimiter",
-                "start": i,
-                "end": i + 1,
-                "text": ch
-            })
+            marks.append({"type": "delimiter", "start": i, "end": i + 1, "text": ch})
             i += 1
             continue
 
@@ -422,7 +140,7 @@ def mark_structural_elements(text):
                 continue
 
             # Optional pattern
-            opt_match = OPTIONAL_PATTERN.match(lower, i)
+            opt_match = OPTIONAL_EFFECT_PATTERN.match(lower, i)
             if opt_match:
                 marks.append({
                     "type": "optional",
@@ -434,7 +152,7 @@ def mark_structural_elements(text):
                 continue
 
             # Choice pattern
-            choice_match = CHOICE_PATTERN.match(lower, i)
+            choice_match = CHOICE_EFFECT_PATTERN.match(lower, i)
             if choice_match and not seen_choice:
                 marks.append({
                     "type": "choice",
@@ -450,13 +168,16 @@ def mark_structural_elements(text):
 
     return sorted(marks, key=lambda m: m["start"])
 
+
+# --- Parsing Core ---
+
+
 def parse_effects(text, marks):
     """
-    Splits oracle text into root-level effects based on delimiters,
-    but merges segments if the following segment contains a reflexive subordinate clause anywhere,
-    or if the current segment contains a forward conjunction (e.g., choice).
+    Splits oracle text into effects based on delimiters with respect to
+    conjunctive structures such as forward and backward joins.
 
-    Returns a list of parsed effects (placeholders for now).
+    Returns a list of parsed effects, compounding those linked by backward joins.
     """
 
     effects = []
@@ -467,9 +188,10 @@ def parse_effects(text, marks):
     def marks_in_range(s, e):
         return [m for m in marks if s <= m['start'] < e]
 
+    # First pass: divide text into chunks with respect to forward joins
+    chunks = []
     while i < n:
         mark = marks[i]
-
         if mark['type'] == 'delimiter':
             # Group adjacent delimiters together (e.g., ".\n")
             end_pos = mark['end']
@@ -481,28 +203,21 @@ def parse_effects(text, marks):
             # Current segment is from start up to end_pos
             current_marks = marks_in_range(start, end_pos)
 
-            # Check for forward join: does current segment have a 'choice'?
+            # Check for forward join (e.g., choice)
             forward_join = any(m['type'] == 'choice' for m in current_marks)
 
-            # Check for backward join: does next segment (up to next few marks) contain 'reflexive_subordinate_clause'?
-            backward_join = False
-            lookahead_limit = 3
-            k = j
-            for offset in range(k, min(k + lookahead_limit, n)):
-                if marks[offset]['type'] == 'reflexive_subordinate_clause':
-                    backward_join = True
-                    break
-
-            # If either join condition is true, do NOT split here; continue past these delimiters
-            if forward_join or backward_join:
+            if forward_join:
                 i = j
-                # do not update start, keep absorbing
-                continue
+                continue  # keep absorbing into current chunk
 
-            # Otherwise, safe to split effect here
+            # Otherwise, safe to split here
             segment_text = text[start:end_pos]
-            # Placeholder for actual parse_effect call
-            effects.append(segment_text)
+            segment_marks = marks_in_range(start, end_pos)
+            if segment_text.strip():
+                chunks.append({
+                    "text": segment_text.strip(),
+                    "marks": segment_marks
+                })
 
             start = end_pos
             i = j
@@ -510,9 +225,224 @@ def parse_effects(text, marks):
 
         i += 1
 
-    # Add any trailing text as last effect
+    # Final trailing chunk
     if start < len(text):
         segment_text = text[start:]
-        effects.append(segment_text)
+        segment_marks = marks_in_range(start, len(text))
+        if segment_text.strip():
+            chunks.append({
+                "text": segment_text.strip(),
+                "marks": segment_marks
+            })
 
-    return effects
+    # Second pass: parse each chunk independently into a discrete effect
+    parsed = []
+    for chunk in chunks:
+        base_offset = chunk['marks'][0]['start'] if chunk['marks'] else 0
+        # Adjust all marks to be relative to this chunk
+        adjusted_marks = [
+            {
+                **m,
+                "start": m["start"] - base_offset,
+                "end": m["end"] - base_offset
+            }
+            for m in chunk["marks"]
+        ]
+        parsed.append(parse_effect(chunk["text"], adjusted_marks))
+
+    # Third pass: merge parsed effects that are backward-joined via reflexive clause
+    merged = []
+    i = 0
+    while i < len(parsed):
+        current = parsed[i]
+        next_chunk = chunks[i + 1] if i + 1 < len(chunks) else None
+        next_effect = parsed[i + 1] if i + 1 < len(parsed) else None
+
+        # Check if next chunk contains a reflexive subordinate clause
+        has_reflexive_join = (
+            next_chunk and any(
+                m["type"] == "reflexive_subordinate_clause"
+                for m in next_chunk["marks"]
+            )
+        )
+
+        if has_reflexive_join:
+            # Wrap the two effects in a compound structure
+            compound = {
+                "text": f"{current['text']} {next_effect['text']}".strip(),
+                "effects": [current, next_effect],
+                "modifiers": ["compound:reflexive"]
+            }
+            merged.append(compound)
+            i += 2
+        else:
+            merged.append(current)
+            i += 1
+
+    return merged
+
+
+def parse_effect(text, marks):
+    effect = {"text": text.strip()}
+
+    clauses = []
+    nested_effects = []
+    modifiers = []
+
+    i = 0
+    while i < len(marks):
+        mark = marks[i]
+
+        if mark["type"] == TRIGGER:
+            clause, consumed = consume_clause(text, marks[i:], TRIGGER)
+            clauses.append(clause)
+            i += consumed
+
+        elif mark["type"] == CONDITION:
+            clause, consumed = consume_clause(text, marks[i:], CONDITION)
+            clauses.append(clause)
+            i += consumed
+
+        elif mark["type"] == "choice":
+            choice, consumed = consume_choice_effect(text, marks[i:])
+            nested_effects.append(choice)
+            modifiers.append("choice")
+            i += consumed
+
+        elif mark["type"] == "optional":
+            optional, consumed = consume_optional_effect(text, marks[i:])
+            nested_effects.append(optional)
+            modifiers.append("optional")
+            i += consumed
+
+        else:
+            i += 1
+
+    if clauses:
+        effect["clauses"] = clauses
+    if nested_effects:
+        effect["effects"] = nested_effects
+    if modifiers:
+        effect["modifiers"] = modifiers
+
+    return effect
+
+
+# --- Pattern Consumers ---
+
+def consume_clause(text, marks, clause_type):
+    mark = marks[0]
+
+    # Find clause end
+    comma_match = re.search(r',', text[mark["end"]:])
+    clause_end = mark["end"] + comma_match.start() + 1 if comma_match else len(text)
+
+    clause_text = text[mark["start"]:clause_end].strip()
+
+    # Extract the text after the prefix to clause end
+    subject_text = text[mark["end"]:clause_end].strip()
+
+    # Find all prefixes of the same clause_type inside this clause_text
+    text_lower = clause_text.lower()
+    prefix_positions = []
+    for t, prefix, pattern in PREFIX_PATTERNS:
+        if t != clause_type:
+            continue
+        for m in pattern.finditer(text_lower):
+            prefix_positions.append(m.start())
+    prefix_positions.sort()
+
+    if len(prefix_positions) <= 1:
+        # Single clause
+        subjects = [subject_text.strip().strip(',')]
+    else:
+        # Compound clause
+        subjects = []
+        for i, start_pos in enumerate(prefix_positions):
+            start = start_pos
+            end = prefix_positions[i + 1] if i + 1 < len(prefix_positions) else len(clause_text)
+            fragment = clause_text[start:end].strip().strip(',')
+            # Remove prefix from fragment start
+            prefix_pattern = re.compile(rf'^{re.escape(text_lower[start_pos:start_pos+len(prefix)])}', re.IGNORECASE)
+            fragment = prefix_pattern.sub('', fragment).strip()
+            if fragment:
+                subjects.append(fragment)
+
+    clause = {
+        "type": clause_type,
+        "text": clause_text,
+        "subjects": subjects
+    }
+
+    consumed = count_marks_in_range(marks, mark["start"], clause_end)
+    return clause, consumed
+
+
+def consume_optional_effect(text, marks):
+    mark = marks[0]
+    end = find_effect_end(text, mark["end"])
+
+    # Remove the optional prefix from sub_text
+    sub_text = text[mark["end"]:end].strip()
+
+    # Filter sub-marks to exclude the optional mark
+    sub_marks = [m for m in marks if mark["end"] <= m["start"] < end]
+
+    effect = parse_effect(sub_text, sub_marks)
+
+    consumed = count_marks_in_range(marks, mark["start"], end)
+    return effect, consumed
+
+
+def consume_choice_effect(text, marks):
+    start = marks[0]["start"]
+
+    # Find the line starting with "choose one —" or similar
+    match = re.search(r'choose\s+one\s+—', text[start:], flags=re.IGNORECASE)
+
+    choice_start = start + match.start()
+    remaining_text = text[choice_start:]
+
+    # Capture all lines starting with • until we hit something that doesn't match
+    lines = remaining_text.splitlines()
+    clause_lines = [lines[0]]  # start with "choose one —"
+
+    for line in lines[1:]:
+        if re.match(r'\s*•', line):
+            clause_lines.append(line)
+        else:
+            break
+
+    clause_text = "\n".join(clause_lines).strip()
+
+    # Extract the bullet effects
+    choice_items = re.findall(r'•\s*(.*?)(?:[\n\r]|$)', clause_text)
+
+    effects = []
+    for item in choice_items:
+        effects.append({
+            "text": f"• {item.strip()}",
+            "effects": [{"text": item.strip()}],
+        })
+
+    effect = {
+        "text": clause_text,
+        "effects": effects
+    }
+
+    # Determine how many marks were covered from start to end of this block
+    clause_end = start + len("\n".join(clause_lines))
+    consumed = count_marks_in_range(marks, start, clause_end)
+
+    return effect, consumed
+
+
+# --- Utilities ---
+
+def count_marks_in_range(marks, start, end):
+    return len([m for m in marks if start <= m["start"] < end])
+
+
+def find_effect_end(text, start):
+    match = re.search(EFFECT_END_PATTERN, text[start:])
+    return start + match.start() + 1 if match else len(text)

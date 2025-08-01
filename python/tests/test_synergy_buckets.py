@@ -30,51 +30,72 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
             {'type': 'delimiter', 'start': 158, 'end': 159, 'text': '.'}
         ]
 
-        self.expected_blocks = [
-            {
-                "text": "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it.",
-                "trigger": {
-                    "text": "Whenever a Goblin or Orc you control deals combat damage to a player,",
-                    "subjects": ["a Goblin or Orc you control deals combat damage to a player"]
-                },
-                "effects": [
-                    {
-                        "text": "you may sacrifice it.",
-                        "effects": [{"text": "sacrifice it"}],
-                        "modifiers": ["optional"]
-                    },
-                    {
-                        "text": "When you do, choose one — • Draw a card. • Create a Treasure token.",
-                        "trigger": {
-                            "text": "When you do,",
-                            "modifiers": ["reflexive"]
+        self.expected_blocks = {
+            "Gorbag of Minas Morgul": [
+                {
+                    "text": "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it. When you do, choose one \u2014\n\u2022 Draw a card.\n\u2022 Create a Treasure token.",
+                    "effects": [
+                        {
+                            "text": "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it.",
+                            "clauses": [
+                                {
+                                    "type": "trigger",
+                                    "text": "Whenever a Goblin or Orc you control deals combat damage to a player,",
+                                    "subjects": [
+                                        "a Goblin or Orc you control deals combat damage to a player"
+                                    ]
+                                }
+                            ],
+                            "effects": [{"text": "sacrifice it."}],
+                            "modifiers": ["optional"]
                         },
-                        "effects": [
-                            {
-                                "text": "choose one — • Draw a card. • Create a Treasure token.",
-                                "effects": [
-                                    {
-                                        "text": "• Draw a card.",
-                                        "effects": [{"text": "Draw a card"}]
-                                    },
-                                    {
-                                        "text": "• Create a Treasure token.",
-                                        "effects": [{"text": "Create a Treasure token"}]
-                                    }
-                                ],
-                                "modifiers": ["choice"]
-                            }
-                        ]
-                    }
-                ]
-            }
-        ]
+                        {
+                            "text": "When you do, choose one \u2014\n\u2022 Draw a card.\n\u2022 Create a Treasure token.",
+                            "clauses": [
+                                {
+                                    "type": "trigger",
+                                    "text": "When you do,",
+                                    "subjects": [
+                                        "you do"
+                                    ]
+                                }
+                            ],
+                            "effects": [
+                                {
+                                    "text": "choose one \u2014\n\u2022 Draw a card.\n\u2022 Create a Treasure token.",
+                                    "effects": [
+                                        {
+                                            "text": "\u2022 Draw a card.",
+                                            "effects": [
+                                                {
+                                                    "text": "Draw a card."
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "text": "\u2022 Create a Treasure token.",
+                                            "effects": [
+                                                {
+                                                    "text": "Create a Treasure token."
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ],
+                            "modifiers": ["choice"]
+                        }
+                    ],
+                    "modifiers": ["compound:reflexive"]
+                }
+            ]
+        }
 
     def test_extract_blocks_matches_expected(self):
         from deck_builder.synergy_buckets import extract_synergy_frames
 
-        actual_dict = extract_synergy_frames(self.cards)
-        self.assertEqual(list(actual_dict.values()), self.expected_blocks)
+        result = extract_synergy_frames(self.cards)
+        self.assertEqual(result, self.expected_blocks)
 
     def test_mark_structural_elements(self):
         from deck_builder.synergy_buckets import mark_structural_elements, strip_keywords
