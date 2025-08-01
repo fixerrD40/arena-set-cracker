@@ -8,8 +8,9 @@ TRIGGER_PREFIX = ["whenever", "when", "at the beginning", "as", "after"]
 CONDITION_PREFIX = ["if", "as long as"]
 
 REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", flags=re.IGNORECASE)
-CHOICE_EFFECT_PATTERN = re.compile(r'\bchoose one\b', flags=re.IGNORECASE)
+CHOICE_EFFECT_PATTERN = re.compile(r'\bchoose\s(one|two)\b', flags=re.IGNORECASE)
 OPTIONAL_EFFECT_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
+REPLACEMENT_EFFECT_PATTERN = re.compile(r'\binstead\b', re.IGNORECASE)
 EFFECT_END_PATTERN = r'[.;\n]'
 
 CORE_KEYWORDS = [
@@ -35,7 +36,7 @@ def extract_synergy_frames(cards):
         keywords = card.get("keywords", [])
         keyword_text, remainder = strip_keywords(oracle_text, keywords)
         marks = mark_structural_elements(remainder)
-        effects = parse_effects(remainder, marks)
+        effects = parse_text(remainder, marks)
         result[card["name"]] = effects
     return result
 
@@ -95,7 +96,6 @@ def mark_structural_elements(text):
     marks = []
     lower = text.lower()
     i = 0
-    seen_choice = False
 
     while i < len(text):
         ch = text[i]
@@ -153,15 +153,26 @@ def mark_structural_elements(text):
 
             # Choice pattern
             choice_match = CHOICE_EFFECT_PATTERN.match(lower, i)
-            if choice_match and not seen_choice:
+            if choice_match:
                 marks.append({
                     "type": "choice",
                     "start": choice_match.start(),
                     "end": choice_match.end(),
                     "text": text[choice_match.start():choice_match.end()]
                 })
-                seen_choice = True
                 i = choice_match.end()
+                continue
+
+            # Replacement clause pattern
+            replacement_match = REPLACEMENT_EFFECT_PATTERN.match(lower, i)
+            if replacement_match:
+                marks.append({
+                    "type": "replacement",
+                    "start": replacement_match.start(),
+                    "end": replacement_match.end(),
+                    "text": text[replacement_match.start():replacement_match.end()]
+                })
+                i = replacement_match.end()
                 continue
 
         i += 1
@@ -172,15 +183,14 @@ def mark_structural_elements(text):
 # --- Parsing Core ---
 
 
-def parse_effects(text, marks):
+def parse_text(text, marks):
     """
     Splits oracle text into effects based on delimiters with respect to
     conjunctive structures such as forward and backward joins.
 
-    Returns a list of parsed effects, compounding those linked by backward joins.
+    Returns a list of parsed effects, compounding those linked by backward joins,
+    including replacements merged where appropriate.
     """
-
-    effects = []
     n = len(marks)
     i = 0
     start = 0
@@ -189,134 +199,187 @@ def parse_effects(text, marks):
         return [m for m in marks if s <= m['start'] < e]
 
     # First pass: divide text into chunks with respect to forward joins
-    chunks = []
+    chunks = {}
+    key = 1
+    segment_text = ''
+    segment_marks = []
+    segment_key = 0
     while i < n:
         mark = marks[i]
         if mark['type'] == 'delimiter':
-            # Group adjacent delimiters together (e.g., ".\n")
             end_pos = mark['end']
-            j = i + 1
-            while j < n and marks[j]['type'] == 'delimiter' and marks[j]['start'] == end_pos:
-                end_pos = marks[j]['end']
-                j += 1
-
-            # Current segment is from start up to end_pos
             current_marks = marks_in_range(start, end_pos)
-
-            # Check for forward join (e.g., choice)
-            forward_join = any(m['type'] == 'choice' for m in current_marks)
-
-            if forward_join:
-                i = j
-                continue  # keep absorbing into current chunk
-
-            # Otherwise, safe to split here
-            segment_text = text[start:end_pos]
-            segment_marks = marks_in_range(start, end_pos)
-            if segment_text.strip():
-                chunks.append({
-                    "text": segment_text.strip(),
-                    "marks": segment_marks
-                })
+            current_text = text[start:end_pos]
 
             start = end_pos
-            i = j
-            continue
+            i += 1
+
+            if current_text == '\n':
+                segment_text += current_text
+                segment_marks += current_marks
+                continue
+
+            if any(m['type'] == 'replacement' for m in current_marks):
+                chunks[key] = {
+                    "text": current_text.strip(),
+                    "marks": current_marks,
+                    "end_pos": end_pos
+                }
+                key += 1
+                continue
+
+            is_forward_join = any(m['type'] == 'choice' for m in current_marks)
+            is_bullet = current_text.startswith('\u2022')
+
+            if is_forward_join:
+                segment_key = key
+                segment_text = current_text
+                segment_marks = current_marks
+                key += 1
+                continue
+
+            elif is_bullet and segment_key:
+                segment_text += current_text
+                segment_marks += current_marks
+                continue
+
+            elif segment_key:
+                chunks[segment_key] = {
+                    "text": segment_text.strip(),
+                    "marks": segment_marks,
+                    "end_pos": segment_marks[-1]['end']
+                }
+                segment_text = ''
+                segment_marks = []
+                segment_key = 0
+
+            chunks[key] = {
+                "text": current_text.strip(),
+                "marks": current_marks,
+                "end_pos": end_pos
+            }
+            key += 1
 
         i += 1
 
-    # Final trailing chunk
-    if start < len(text):
-        segment_text = text[start:]
-        segment_marks = marks_in_range(start, len(text))
-        if segment_text.strip():
-            chunks.append({
-                "text": segment_text.strip(),
-                "marks": segment_marks
-            })
+    if segment_key:
+        chunks[segment_key] = {
+            "text": segment_text.strip(),
+            "marks": segment_marks,
+            "end_pos": segment_marks[-1]['end']
+        }
 
-    # Second pass: parse each chunk independently into a discrete effect
-    parsed = []
-    for chunk in chunks:
+    # Second pass: parse each chunk
+    parsed = {}
+    for k, chunk in chunks.items():
         base_offset = chunk['marks'][0]['start'] if chunk['marks'] else 0
-        # Adjust all marks to be relative to this chunk
         adjusted_marks = [
-            {
-                **m,
-                "start": m["start"] - base_offset,
-                "end": m["end"] - base_offset
-            }
+            {**m, "start": m["start"] - base_offset, "end": m["end"] - base_offset}
             for m in chunk["marks"]
         ]
-        parsed.append(parse_effect(chunk["text"], adjusted_marks))
 
-    # Third pass: merge parsed effects that are backward-joined via reflexive clause
-    merged = []
-    i = 0
-    while i < len(parsed):
-        current = parsed[i]
-        next_chunk = chunks[i + 1] if i + 1 < len(chunks) else None
-        next_effect = parsed[i + 1] if i + 1 < len(parsed) else None
-
-        # Check if next chunk contains a reflexive subordinate clause
-        has_reflexive_join = (
-            next_chunk and any(
-                m["type"] == "reflexive_subordinate_clause"
-                for m in next_chunk["marks"]
-            )
-        )
-
-        if has_reflexive_join:
-            # Wrap the two effects in a compound structure
-            compound = {
-                "text": f"{current['text']} {next_effect['text']}".strip(),
-                "effects": [current, next_effect],
-                "modifiers": ["compound:reflexive"]
-            }
-            merged.append(compound)
-            i += 2
+        # Store parsed result
+        if any(m['type'] == 'replacement' for m in adjusted_marks):
+            parsed[k] = parse_replacement(chunk['text'], adjusted_marks)
         else:
-            merged.append(current)
-            i += 1
+            effect = parse_effect(chunk['text'], adjusted_marks)
+
+            # Get current chunk's end_pos
+            end_pos = chunk.get('end_pos', 0)
+
+            # If next chunk is a replacement, extend the span
+            next_chunk = chunks.get(k + 1)
+            if next_chunk and any(m['type'] == 'replacement' for m in next_chunk['marks']):
+                replacement_end = next_chunk.get('end_pos', 0)
+                end_pos = max(end_pos, replacement_end)
+
+            # Assign text based on expanded span
+            effect['text'] = text[chunk['marks'][0]['start']:end_pos].strip()
+
+            parsed[k] = effect
+
+    # Third pass: attach replacements and compound clauses to prior effects
+    merged = []
+    keys = sorted(parsed.keys())
+    i = 0
+
+    while i < len(keys):
+        k = keys[i]
+        current = parsed[k]
+
+        next_k = keys[i + 1] if i + 1 < len(keys) else None
+        next_chunk = chunks.get(next_k)
+        next_parsed = parsed.get(next_k)
+
+        if next_chunk and next_parsed:
+            mark_types = {m['type'] for m in next_chunk['marks']}
+
+            if 'reflexive_subordinate_clause' in mark_types:
+                compound = {
+                    "text": f"{current['text']} {next_parsed['text']}".strip(),
+                    "effects": [current, next_parsed],
+                    "modifiers": ["compound:reflexive"]
+                }
+                merged.append(compound)
+                i += 2
+                continue
+
+            elif 'replacement' in mark_types:
+                current['replacement'] = next_parsed
+                merged.append(current)
+                i += 2
+                continue
+
+        merged.append(current)
+        i += 1
 
     return merged
 
 
 def parse_effect(text, marks):
-    effect = {"text": text.strip()}
+    effect = {}
 
     clauses = []
     nested_effects = []
     modifiers = []
 
     i = 0
+    last_consumed = 0
+
     while i < len(marks):
         mark = marks[i]
 
         if mark["type"] == TRIGGER:
-            clause, consumed = consume_clause(text, marks[i:], TRIGGER)
+            clause, consumed, end = consume_clause(text, marks[i:], TRIGGER)
             clauses.append(clause)
+            last_consumed = end
             i += consumed
 
         elif mark["type"] == CONDITION:
-            clause, consumed = consume_clause(text, marks[i:], CONDITION)
+            clause, consumed, end = consume_clause(text, marks[i:], CONDITION)
             clauses.append(clause)
+            last_consumed = end
             i += consumed
 
         elif mark["type"] == "choice":
-            choice, consumed = consume_choice_effect(text, marks[i:])
+            choice, consumed, end = consume_choice_effect(text, marks[i:])
             nested_effects.append(choice)
             modifiers.append("choice")
+            last_consumed = end
             i += consumed
 
         elif mark["type"] == "optional":
-            optional, consumed = consume_optional_effect(text, marks[i:])
-            nested_effects.append(optional)
             modifiers.append("optional")
-            i += consumed
+            last_consumed = mark["end"]
+            i += 1
 
         else:
             i += 1
+
+    if last_consumed < len(text):
+        residual_effect = text[last_consumed:].strip()
+        if residual_effect:
+            nested_effects.append({"text": residual_effect})
 
     if clauses:
         effect["clauses"] = clauses
@@ -326,6 +389,58 @@ def parse_effect(text, marks):
         effect["modifiers"] = modifiers
 
     return effect
+
+def parse_replacement(text, marks):
+    """
+    Parse replacement structures.
+
+    These appear to apply to effects, or in their absence just gameplay mechanics.
+    """
+
+    replacement = {"text": text.strip()}
+
+    replacement_effects = []
+    clauses = []
+    modifiers = []
+
+    i = 0
+    last_consumed = 0
+
+    while i < len(marks):
+        mark = marks[i]
+
+        if mark["type"] in (CONDITION, TRIGGER):
+            clause, consumed, end = consume_clause(text, marks[i:], mark["type"])
+            clauses.append(clause)
+            last_consumed = end
+            i += consumed
+
+        elif mark["type"] == "optional":
+            modifiers.append("optional")
+            last_consumed = mark["end"]
+            i += 1
+
+        else:
+            i += 1
+
+    # After all clauses and known marks are consumed, grab the remaining text as the effect
+    if last_consumed < len(text):
+        residual_effect = text[last_consumed:].strip()
+        # Remove "instead
+        residual_effect = re.sub(REPLACEMENT_EFFECT_PATTERN, '', residual_effect)
+        # Remove space before punctuation (.,;:)
+        residual_effect = re.sub(r'\s+([.;\n])', r'\1', residual_effect)
+        if residual_effect:
+            replacement_effects.append(residual_effect)
+
+    if clauses:
+        replacement["clauses"] = clauses
+    if replacement_effects:
+        replacement["effects"] = replacement_effects
+    if modifiers:
+        replacement["modifiers"] = modifiers
+
+    return replacement
 
 
 # --- Pattern Consumers ---
@@ -375,30 +490,14 @@ def consume_clause(text, marks, clause_type):
     }
 
     consumed = count_marks_in_range(marks, mark["start"], clause_end)
-    return clause, consumed
-
-
-def consume_optional_effect(text, marks):
-    mark = marks[0]
-    end = find_effect_end(text, mark["end"])
-
-    # Remove the optional prefix from sub_text
-    sub_text = text[mark["end"]:end].strip()
-
-    # Filter sub-marks to exclude the optional mark
-    sub_marks = [m for m in marks if mark["end"] <= m["start"] < end]
-
-    effect = parse_effect(sub_text, sub_marks)
-
-    consumed = count_marks_in_range(marks, mark["start"], end)
-    return effect, consumed
+    return clause, consumed, clause_end
 
 
 def consume_choice_effect(text, marks):
     start = marks[0]["start"]
 
     # Find the line starting with "choose one —" or similar
-    match = re.search(r'choose\s+one\s+—', text[start:], flags=re.IGNORECASE)
+    match = re.search(CHOICE_EFFECT_PATTERN, text[start:])
 
     choice_start = start + match.start()
     remaining_text = text[choice_start:]
@@ -434,7 +533,7 @@ def consume_choice_effect(text, marks):
     clause_end = start + len("\n".join(clause_lines))
     consumed = count_marks_in_range(marks, start, clause_end)
 
-    return effect, consumed
+    return effect, consumed, clause_end
 
 
 # --- Utilities ---
