@@ -26,6 +26,14 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 "oracle_text": "Choose one. If you control a Wizard as you cast this spell, you may choose two instead.\n\u2022 Target player draws two cards.\n\u2022 Destroy target artifact.\n\u2022 Flame of Anor deals 5 damage to target creature.",
                 "keywords": []
             },
+            {
+                "name": "Stone of Erech",
+                "rarity": "uncommon",
+                "color_identity": [],
+                "type_line": "Legendary Artifact",
+                "oracle_text": "If a creature an opponent controls would die, exile it instead.\n{2}, {T}, Sacrifice Stone of Erech: Exile target player's graveyard. Draw a card.",
+                "keywords": []
+            },
         ]
 
         self.expected_marks = {
@@ -57,6 +65,17 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {'type': 'delimiter', 'start': 146, 'end': 147, 'text': '.'},
                 {'type': 'delimiter', 'start': 147, 'end': 148, 'text': '\n'},
                 {'type': 'delimiter', 'start': 197, 'end': 198, 'text': '.'}
+            ],
+            "Stone of Erech": [
+                {'type': 'condition', 'prefix': 'if', 'start': 0, 'end': 2, 'text': 'If'},
+                {'type': 'replacement', 'start': 55, 'end': 62, 'text': 'instead'},
+                {'type': 'delimiter', 'start': 62, 'end': 63, 'text': '.'},
+                {'type': 'delimiter', 'start': 63, 'end': 64, 'text': '\n'},
+                {'type': 'mana_cost', 'start': 64, 'end': 66, 'text': '{2'},
+                {'type': 'tap_cost', 'start': 69, 'end': 72, 'text': '{T}'},
+                {'type': 'cost_divider', 'start': 98, 'end': 99, 'text': ':'},
+                {'type': 'delimiter', 'start': 131, 'end': 132, 'text': '.'},
+                {'type': 'delimiter', 'start': 144, 'end': 145, 'text': '.'}
             ]
         }
 
@@ -127,6 +146,49 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                         "modifiers": ["optional"]
                     },
                     "modifiers": ["choice"]
+                }
+            ],
+            "Stone of Erech": [
+                {
+                    "text": "If a creature an opponent controls would die, exile it instead.",
+                    "clauses": [
+                        {
+                            "type": "condition",
+                            "text": "If a creature an opponent controls would die,",
+                            "subjects": [
+                                "a creature an opponent controls would die"
+                            ]
+                        }
+                    ],
+                    "effects": [
+                        "exile it."
+                    ]
+                },
+                {
+                    "text": "{2}, {T}, Sacrifice Stone of Erech: Exile target player's graveyard. Draw a card.",
+                    "cost": [
+                        "{2",
+                        "{T}",
+                        "Sacrifice Stone of Erech"
+                    ],
+                    "effects": [
+                        {
+                          "effects": [
+                            {
+                              "text": "Exile target player's graveyard."
+                            }
+                          ],
+                          "text": "Exile target player's graveyard."
+                        },
+                        {
+                          "effects": [
+                            {
+                              "text": "Draw a card."
+                            }
+                          ],
+                          "text": "Draw a card."
+                        }
+                    ]
                 }
             ]
         }

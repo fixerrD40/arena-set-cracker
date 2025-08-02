@@ -11,7 +11,11 @@ REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", flags=re.IGNORE
 CHOICE_EFFECT_PATTERN = re.compile(r'\bchoose\s(one|two)\b', flags=re.IGNORECASE)
 OPTIONAL_EFFECT_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
 REPLACEMENT_EFFECT_PATTERN = re.compile(r'\binstead\b', re.IGNORECASE)
+EFFECT_COST_PATTERN = re.compile(r':')
 EFFECT_END_PATTERN = r'[.;\n]'
+
+MANA_SYMBOL_PATTERN = re.compile(r'\{\d+|[WUBRGX]}', re.IGNORECASE)
+TAP_SYMBOL_PATTERN = re.compile(r'\{T}', re.IGNORECASE)
 
 CORE_KEYWORDS = [
     "deathtouch", "double strike", "first strike", "flash", "flying", "haste",
@@ -104,6 +108,42 @@ def mark_structural_elements(text):
         if ch in {'.', ';', '\n'}:
             marks.append({"type": "delimiter", "start": i, "end": i + 1, "text": ch})
             i += 1
+            continue
+
+        # Mana symbol
+        mana_match = MANA_SYMBOL_PATTERN.match(text, i)
+        if mana_match:
+            marks.append({
+                "type": "mana_cost",
+                "start": mana_match.start(),
+                "end": mana_match.end(),
+                "text": text[mana_match.start():mana_match.end()]
+            })
+            i = mana_match.end()
+            continue
+
+        # Tap symbol
+        tap_match = TAP_SYMBOL_PATTERN.match(text, i)
+        if tap_match:
+            marks.append({
+                "type": "tap_cost",
+                "start": tap_match.start(),
+                "end": tap_match.end(),
+                "text": text[tap_match.start():tap_match.end()]
+            })
+            i = tap_match.end()
+            continue
+
+        # Effect divider
+        colon_match = EFFECT_COST_PATTERN.match(text, i)
+        if colon_match:
+            marks.append({
+                "type": "cost_divider",
+                "start": colon_match.start(),
+                "end": colon_match.end(),
+                "text": text[colon_match.start():colon_match.end()]
+            })
+            i = colon_match.end()
             continue
 
         # Only try clause pattern matches at start of a word
@@ -204,9 +244,17 @@ def parse_text(text, marks):
     segment_text = ''
     segment_marks = []
     segment_key = 0
+    activated_ability = False
     while i < n:
         mark = marks[i]
         if mark['type'] == 'delimiter':
+            if activated_ability:
+                if (mark['text'] != '\n') & (i != n-1):
+                    i += 1
+                    continue
+                elif mark['text'] == '\n':
+                    activated_ability = False
+
             end_pos = mark['end']
             current_marks = marks_in_range(start, end_pos)
             current_text = text[start:end_pos]
@@ -260,7 +308,10 @@ def parse_text(text, marks):
             }
             key += 1
 
-        i += 1
+        else:
+            if mark['type'] == 'cost_divider':
+                activated_ability = True
+            i += 1
 
     if segment_key:
         chunks[segment_key] = {
@@ -273,10 +324,7 @@ def parse_text(text, marks):
     parsed = {}
     for k, chunk in chunks.items():
         base_offset = chunk['marks'][0]['start'] if chunk['marks'] else 0
-        adjusted_marks = [
-            {**m, "start": m["start"] - base_offset, "end": m["end"] - base_offset}
-            for m in chunk["marks"]
-        ]
+        adjusted_marks = shift_marks_relative_to_subtext(chunk["marks"], base_offset)
 
         # Store parsed result
         if any(m['type'] == 'replacement' for m in adjusted_marks):
@@ -293,8 +341,15 @@ def parse_text(text, marks):
                 replacement_end = next_chunk.get('end_pos', 0)
                 end_pos = max(end_pos, replacement_end)
 
-            # Assign text based on expanded span
-            effect['text'] = text[chunk['marks'][0]['start']:end_pos].strip()
+            # Determine start position for the text slice
+            prev_chunk = chunks.get(k - 1)
+            if prev_chunk:
+                start_pos = prev_chunk.get('end_pos', chunk['marks'][0]['start'])
+            else:
+                start_pos = 0
+
+            # Assign text based on the range from start_pos to end_pos
+            effect['text'] = text[start_pos:end_pos].strip()
 
             parsed[k] = effect
 
@@ -339,54 +394,66 @@ def parse_text(text, marks):
 def parse_effect(text, marks):
     effect = {}
 
-    clauses = []
-    nested_effects = []
-    modifiers = []
+    # First, handle cost parsing separately
+    cost_parts, residual_text = consume_effect_cost(text, marks)
 
-    i = 0
-    last_consumed = 0
+    # Filter marks to those within the residual text region
+    residual_start = text.index(residual_text) if residual_text else len(text)
+    residual_marks = shift_marks_relative_to_subtext(marks, residual_start)
 
-    while i < len(marks):
-        mark = marks[i]
+    if cost_parts:
+        effect["cost"] = cost_parts
+        effect["effects"] = parse_text(residual_text, residual_marks)
+    else:
+        # Now parse the residual effect text as usual
+        clauses = []
+        nested_effects = []
+        modifiers = []
 
-        if mark["type"] == TRIGGER:
-            clause, consumed, end = consume_clause(text, marks[i:], TRIGGER)
-            clauses.append(clause)
-            last_consumed = end
-            i += consumed
+        i = 0
+        last_consumed = 0
 
-        elif mark["type"] == CONDITION:
-            clause, consumed, end = consume_clause(text, marks[i:], CONDITION)
-            clauses.append(clause)
-            last_consumed = end
-            i += consumed
+        while i < len(residual_marks):
+            mark = residual_marks[i]
 
-        elif mark["type"] == "choice":
-            choice, consumed, end = consume_choice_effect(text, marks[i:])
-            nested_effects.append(choice)
-            modifiers.append("choice")
-            last_consumed = end
-            i += consumed
+            if mark["type"] == TRIGGER:
+                clause, consumed, end = consume_clause(residual_text, residual_marks[i:], TRIGGER)
+                clauses.append(clause)
+                last_consumed = end
+                i += consumed
 
-        elif mark["type"] == "optional":
-            modifiers.append("optional")
-            last_consumed = mark["end"]
-            i += 1
+            elif mark["type"] == CONDITION:
+                clause, consumed, end = consume_clause(residual_text, residual_marks[i:], CONDITION)
+                clauses.append(clause)
+                last_consumed = end
+                i += consumed
 
-        else:
-            i += 1
+            elif mark["type"] == "choice":
+                choice, consumed, end = consume_choice_effect(residual_text, residual_marks[i:])
+                nested_effects.append(choice)
+                modifiers.append("choice")
+                last_consumed = end
+                i += consumed
 
-    if last_consumed < len(text):
-        residual_effect = text[last_consumed:].strip()
-        if residual_effect:
-            nested_effects.append({"text": residual_effect})
+            elif mark["type"] == "optional":
+                modifiers.append("optional")
+                last_consumed = mark["end"]
+                i += 1
 
-    if clauses:
-        effect["clauses"] = clauses
-    if nested_effects:
-        effect["effects"] = nested_effects
-    if modifiers:
-        effect["modifiers"] = modifiers
+            else:
+                i += 1
+
+        if last_consumed < len(residual_text):
+            residual_effect = residual_text[last_consumed:].strip()
+            if residual_effect:
+                nested_effects.append({"text": residual_effect})
+
+        if clauses:
+            effect["clauses"] = clauses
+        if nested_effects:
+            effect["effects"] = nested_effects
+        if modifiers:
+            effect["modifiers"] = modifiers
 
     return effect
 
@@ -444,6 +511,31 @@ def parse_replacement(text, marks):
 
 
 # --- Pattern Consumers ---
+
+def consume_effect_cost(text, marks):
+    marks = sorted(marks, key=lambda m: m['start'])
+
+    cost_parts = []
+    last_cost_end = 0
+
+    for mark in marks:
+        if mark['type'] in ['mana_cost', 'tap_cost']:
+            cost_parts.append(mark['text'])
+            last_cost_end = max(last_cost_end, mark['end'])
+
+    colon_mark = next((m for m in marks if m['type'] == 'cost_divider'), None)
+    colon_pos = colon_mark['start'] if colon_mark else None
+
+    if colon_pos is not None:
+        sacrifice_cost_text = text[last_cost_end:colon_pos].strip(' ,')
+        if sacrifice_cost_text:
+            cost_parts.append(sacrifice_cost_text)
+
+        main_effect_text = text[colon_pos + 1:].strip()
+    else:
+        main_effect_text = text[last_cost_end:].strip()
+
+    return cost_parts, main_effect_text
 
 def consume_clause(text, marks, clause_type):
     mark = marks[0]
@@ -540,6 +632,17 @@ def consume_choice_effect(text, marks):
 
 def count_marks_in_range(marks, start, end):
     return len([m for m in marks if start <= m["start"] < end])
+
+def shift_marks_relative_to_subtext(marks, base_offset):
+    return [
+        {
+            **m,
+            "start": m["start"] - base_offset,
+            "end": m["end"] - base_offset
+        }
+        for m in marks
+        if m["start"] >= base_offset
+    ]
 
 
 def find_effect_end(text, start):
