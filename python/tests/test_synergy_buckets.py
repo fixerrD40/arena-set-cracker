@@ -54,7 +54,6 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {'type': 'delimiter', 'start': 10, 'end': 11, 'text': '.'},
                 {'type': 'condition', 'prefix': 'if', 'start': 12, 'end': 14, 'text': 'If'},
                 {'type': 'trigger', 'prefix': 'as', 'start': 36, 'end': 38, 'text': 'as'},
-                {'type': 'reflexive_subject', 'start': 48, 'end': 58, 'text': 'this spell'},
                 {'type': 'optional', 'start': 60, 'end': 67, 'text': 'you may'},
                 {'type': 'choice', 'start': 68, 'end': 78, 'text': 'choose two'},
                 {'type': 'replacement', 'start': 79, 'end': 86, 'text': 'instead'},
@@ -71,7 +70,7 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {'type': 'replacement', 'start': 55, 'end': 62, 'text': 'instead'},
                 {'type': 'delimiter', 'start': 62, 'end': 63, 'text': '.'},
                 {'type': 'delimiter', 'start': 63, 'end': 64, 'text': '\n'},
-                {'type': 'mana_cost', 'start': 64, 'end': 66, 'text': '{2'},
+                {'type': 'mana_cost', 'start': 64, 'end': 66, 'text': '{2}'},
                 {'type': 'tap_cost', 'start': 69, 'end': 72, 'text': '{T}'},
                 {'type': 'cost_divider', 'start': 98, 'end': 99, 'text': ':'},
                 {'type': 'delimiter', 'start': 131, 'end': 132, 'text': '.'},
@@ -167,27 +166,13 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {
                     "text": "{2}, {T}, Sacrifice Stone of Erech: Exile target player's graveyard. Draw a card.",
                     "cost": [
-                        "{2",
+                        "{2}",
                         "{T}",
                         "Sacrifice Stone of Erech"
                     ],
                     "effects": [
-                        {
-                          "effects": [
-                            {
-                              "text": "Exile target player's graveyard."
-                            }
-                          ],
-                          "text": "Exile target player's graveyard."
-                        },
-                        {
-                          "effects": [
-                            {
-                              "text": "Draw a card."
-                            }
-                          ],
-                          "text": "Draw a card."
-                        }
+                        {"text": "Exile target player's graveyard."},
+                        {"text": "Draw a card."}
                     ]
                 }
             ]

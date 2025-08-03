@@ -7,18 +7,18 @@ CONDITION = "condition"
 TRIGGER_PREFIX = ["whenever", "when", "at the beginning", "as", "after"]
 CONDITION_PREFIX = ["if", "as long as"]
 
-REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", flags=re.IGNORECASE)
-CHOICE_EFFECT_PATTERN = re.compile(r'\bchoose\s(one|two)\b', flags=re.IGNORECASE)
-OPTIONAL_EFFECT_PATTERN = re.compile(r'\byou may\b', flags=re.IGNORECASE)
-REPLACEMENT_EFFECT_PATTERN = re.compile(r'\binstead\b', re.IGNORECASE)
+REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", re.IGNORECASE)
+EFFECT_CHOICE_PATTERN = re.compile(r'\bchoose\s(one|two)\b', re.IGNORECASE)
+EFFECT_OPTIONAL_PATTERN = re.compile(r'\byou may\b', re.IGNORECASE)
+EFFECT_REPLACEMENT_PATTERN = re.compile(r'\binstead\b', re.IGNORECASE)
 EFFECT_COST_PATTERN = re.compile(r':')
 EFFECT_END_PATTERN = r'[.;\n]'
 
-MANA_SYMBOL_PATTERN = re.compile(r'\{\d+|[WUBRGX]}', re.IGNORECASE)
+MANA_SYMBOL_PATTERN = re.compile(r'\{(?:\d+|[WUBRGX])}', re.IGNORECASE)
 TAP_SYMBOL_PATTERN = re.compile(r'\{T}', re.IGNORECASE)
 
 CORE_KEYWORDS = [
-    "deathtouch", "double strike", "first strike", "flash", "flying", "haste",
+    "deathtouch", "double strike", "first strike", "flash", "flying", "indestructible", "haste",
     "lifelink", "reach", "trample", "vigilance"
 ]
 
@@ -30,7 +30,11 @@ PREFIX_PATTERNS = [
     for t, p in ALL_PREFIXES
 ]
 
-REFLEXIVE_SUBJECT_PATTERN = re.compile(r'\b(this|that)\b\s+\b\w+\b', flags=re.IGNORECASE)
+# better way? ...[subject]....that [subject]....
+# REFLEXIVE_SUBJECT_PATTERN = re.compile(r'\bthat\s(type|card|ability|player|creature)', flags=re.IGNORECASE)
+# REFLEXIVE_SUBJECT_PATTERN2 = re.compile(r'\bthis\s(way|ability|mana)', flags=re.IGNORECASE)
+# SELF_PATTERN = re.compile(r'\bthis\s(card|creature|artifact|saga|token|aura|land|enchantment|spell)')
+# this turn/phase
 
 
 def extract_synergy_frames(cards):
@@ -155,7 +159,6 @@ def mark_structural_elements(text):
                 i = match["end"]
                 continue
 
-            # Reflexive subordinate clause
             match = REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN.match(lower, i)
             if match:
                 marks.append({
@@ -167,20 +170,7 @@ def mark_structural_elements(text):
                 i = match.end()
                 continue
 
-            # Reflexive subject
-            reflexive_subj_match = REFLEXIVE_SUBJECT_PATTERN.match(lower, i)
-            if reflexive_subj_match:
-                marks.append({
-                    "type": "reflexive_subject",
-                    "start": reflexive_subj_match.start(),
-                    "end": reflexive_subj_match.end(),
-                    "text": text[reflexive_subj_match.start():reflexive_subj_match.end()]
-                })
-                i = reflexive_subj_match.end()
-                continue
-
-            # Optional pattern
-            opt_match = OPTIONAL_EFFECT_PATTERN.match(lower, i)
+            opt_match = EFFECT_OPTIONAL_PATTERN.match(lower, i)
             if opt_match:
                 marks.append({
                     "type": "optional",
@@ -191,8 +181,7 @@ def mark_structural_elements(text):
                 i = opt_match.end()
                 continue
 
-            # Choice pattern
-            choice_match = CHOICE_EFFECT_PATTERN.match(lower, i)
+            choice_match = EFFECT_CHOICE_PATTERN.match(lower, i)
             if choice_match:
                 marks.append({
                     "type": "choice",
@@ -203,8 +192,7 @@ def mark_structural_elements(text):
                 i = choice_match.end()
                 continue
 
-            # Replacement clause pattern
-            replacement_match = REPLACEMENT_EFFECT_PATTERN.match(lower, i)
+            replacement_match = EFFECT_REPLACEMENT_PATTERN.match(lower, i)
             if replacement_match:
                 marks.append({
                     "type": "replacement",
@@ -443,7 +431,8 @@ def parse_effect(text, marks):
             else:
                 i += 1
 
-        if last_consumed < len(residual_text):
+        # calling function's 'text' field is sufficient if we consumed nothing
+        if last_consumed < len(residual_text) and last_consumed != 0:
             residual_effect = residual_text[last_consumed:].strip()
             if residual_effect:
                 nested_effects.append({"text": residual_effect})
@@ -493,8 +482,8 @@ def parse_replacement(text, marks):
     # After all clauses and known marks are consumed, grab the remaining text as the effect
     if last_consumed < len(text):
         residual_effect = text[last_consumed:].strip()
-        # Remove "instead
-        residual_effect = re.sub(REPLACEMENT_EFFECT_PATTERN, '', residual_effect)
+        # Remove "instead"
+        residual_effect = re.sub(EFFECT_REPLACEMENT_PATTERN, '', residual_effect)
         # Remove space before punctuation (.,;:)
         residual_effect = re.sub(r'\s+([.;\n])', r'\1', residual_effect)
         if residual_effect:
@@ -589,7 +578,7 @@ def consume_choice_effect(text, marks):
     start = marks[0]["start"]
 
     # Find the line starting with "choose one —" or similar
-    match = re.search(CHOICE_EFFECT_PATTERN, text[start:])
+    match = re.search(EFFECT_CHOICE_PATTERN, text[start:])
 
     choice_start = start + match.start()
     remaining_text = text[choice_start:]

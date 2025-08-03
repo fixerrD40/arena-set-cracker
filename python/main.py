@@ -6,20 +6,8 @@ def load_cards(path="sample_input.json"):
         return json.load(f)
 
 def main():
-    cards = [
-            {
-                "name": "Gorbag of Minas Morgul",
-                "rarity": "uncommon",
-                "color_identity": [
-                    "B"
-                ],
-                "type_line": "Legendary Creature \u2014 Orc Soldier",
-                "oracle_text": "Whenever a Goblin or Orc you control deals combat damage to a player, you may sacrifice it. When you do, choose one \u2014\n\u2022 Draw a card.\n\u2022 Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
-                "keywords": [
-                    "Treasure"
-                ]
-            }
-        ]
+    input_data = load_cards()
+    cards = input_data["cards"]
 
     result = extract_synergy_frames(cards)
     print(json.dumps(result, indent=2))
