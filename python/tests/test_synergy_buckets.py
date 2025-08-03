@@ -34,6 +34,16 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 "oracle_text": "If a creature an opponent controls would die, exile it instead.\n{2}, {T}, Sacrifice Stone of Erech: Exile target player's graveyard. Draw a card.",
                 "keywords": []
             },
+            {
+                "name": "Bilbo's Ring",
+                "rarity": "rare",
+                "color_identity": [],
+                "type_line": "Legendary Artifact \u2014 Equipment",
+                "oracle_text": "During your turn, equipped creature has hexproof and can't be blocked.\nWhenever equipped creature attacks alone, you draw a card and you lose 1 life.\nEquip Halfling {1} ({1}: Attach to target Halfling you control. Equip only as a sorcery.)\nEquip {4} ({4}: Attach to target creature you control. Equip only as a sorcery.)",
+                "keywords": [
+                    "Equip"
+                ]
+            }
         ]
 
         self.expected_marks = {
@@ -75,6 +85,18 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {'type': 'cost_divider', 'start': 98, 'end': 99, 'text': ':'},
                 {'type': 'delimiter', 'start': 131, 'end': 132, 'text': '.'},
                 {'type': 'delimiter', 'start': 144, 'end': 145, 'text': '.'}
+            ],
+            "Bilbo's Ring": [
+                {'type': 'delimiter', 'start': 69, 'end': 70, 'text': '.'},
+                {'type': 'delimiter', 'start': 70, 'end': 71, 'text': '\n'},
+                {'type': 'trigger', 'prefix': 'whenever', 'start': 71, 'end': 79, 'text': 'Whenever'},
+                {'type': 'delimiter', 'start': 148, 'end': 149, 'text': '.'},
+                {'type': 'delimiter', 'start': 149, 'end': 150, 'text': '\n'},
+                {'type': 'equip', 'start': 150, 'end': 165, 'text': 'Equip Halfling '},
+                {'type': 'mana_cost', 'start': 165, 'end': 168, 'text': '{1}'},
+                {'type': 'delimiter', 'start': 169, 'end': 170, 'text': '\n'},
+                {'type': 'equip', 'start': 170, 'end': 176, 'text': 'Equip '},
+                {'type': 'mana_cost', 'start': 176, 'end': 179, 'text': '{4}'}
             ]
         }
 
@@ -174,6 +196,42 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                         {"text": "Exile target player's graveyard."},
                         {"text": "Draw a card."}
                     ]
+                }
+            ],
+            "Bilbo's Ring": [
+                {
+                    "text": "During your turn, equipped creature has hexproof and can't be blocked."
+                },
+                {
+                    "clauses": [
+                        {
+                            "type": "trigger",
+                            "text": "Whenever equipped creature attacks alone,",
+                            "subjects": [
+                                "equipped creature attacks alone"
+                            ]
+                        }
+                    ],
+                    "effects": [
+                        {
+                            "text": "you draw a card and you lose 1 life."
+                        }
+                    ],
+                    "text": "Whenever equipped creature attacks alone, you draw a card and you lose 1 life."
+                },
+                {
+                    "text": "Equip Halfling {1}",
+                    "cost": [
+                        "{1}"
+                    ],
+                    "effects": "Equip Halfling"
+                },
+                {
+                    "text": "Equip {4}",
+                    "cost": [
+                        "{4}"
+                    ],
+                    "effects": "Equip"
                 }
             ]
         }
