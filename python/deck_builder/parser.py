@@ -40,7 +40,7 @@ PREFIX_PATTERNS = [
 # this turn/phase
 
 
-def extract_synergy_frames(cards):
+def parse_oracle(cards):
     result = {}
     for idx, card in enumerate(cards):
         oracle_text = card.get("oracle_text", "")
