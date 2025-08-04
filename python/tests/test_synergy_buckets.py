@@ -56,6 +56,16 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                     "Enchant"
                 ]
             },
+            {
+                "name": "Banish from Edoras",
+                "rarity": "common",
+                "color_identity": [
+                    "W"
+                ],
+                "type_line": "Sorcery",
+                "oracle_text": "This spell costs {2} less to cast if it targets a tapped creature.\nExile target creature.",
+                "keywords": []
+            }
         ]
 
         self.expected_marks = {
@@ -75,7 +85,6 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {'type': 'choice', 'start': 0, 'end': 10, 'text': 'Choose one'},
                 {'type': 'delimiter', 'start': 10, 'end': 11, 'text': '.'},
                 {'type': 'condition', 'prefix': 'if', 'start': 12, 'end': 14, 'text': 'If'},
-                {'type': 'trigger', 'prefix': 'as', 'start': 36, 'end': 38, 'text': 'as'},
                 {'type': 'optional', 'start': 60, 'end': 67, 'text': 'you may'},
                 {'type': 'choice', 'start': 68, 'end': 78, 'text': 'choose two'},
                 {'type': 'replacement', 'start': 79, 'end': 86, 'text': 'instead'},
@@ -118,6 +127,13 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                     'text': '"At the beginning of your upkeep, exile this creature unless you pay 2 life."',
                     'type': 'assigned_text'
                 }
+            ],
+            "Banish from Edoras": [
+                {'end': 20, 'start': 17, 'text': '{2}', 'type': 'mana_cost'},
+                {'end': 36, 'prefix': 'if', 'start': 34, 'text': 'if', 'type': 'condition'},
+                {'end': 66, 'start': 65, 'text': '.', 'type': 'delimiter'},
+                {'end': 67, 'start': 66, 'text': '\n', 'type': 'delimiter'},
+                {'end': 89, 'start': 88, 'text': '.', 'type': 'delimiter'}
             ]
         }
 
@@ -262,6 +278,26 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {
                     "text": "Enchanted creature gets -3/-0 and has \"At the beginning of your upkeep, exile this creature unless you pay 2 life.\""
                 }
+            ],
+            "Banish from Edoras": [
+                {
+                    "clauses": [
+                        {
+                            "type": "condition",
+                            "text": "if it targets a tapped creature.",
+                            "subjects": [
+                                "it targets a tapped creature"
+                            ]
+                        }
+                    ],
+                    "effects": [
+                        {
+                            "text": "This spell costs {2} less to cast"
+                        }
+                    ],
+                    "text": "This spell costs {2} less to cast if it targets a tapped creature."
+                },
+                {"text": "Exile target creature."}
             ]
         }
 

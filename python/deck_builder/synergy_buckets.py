@@ -4,7 +4,7 @@ import re
 
 TRIGGER = "trigger"
 CONDITION = "condition"
-TRIGGER_PREFIX = ["whenever", "when", "at the beginning", "as", "after"]
+TRIGGER_PREFIX = ["whenever", "when", "at the beginning", "after"]
 CONDITION_PREFIX = ["if", "as long as"]
 
 REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = re.compile(r"\byou do\b", re.IGNORECASE)
@@ -422,43 +422,42 @@ def parse_text(text, marks):
 
 def parse_effect(text, marks):
     effect = {}
-
     clauses = []
     nested_effects = []
     modifiers = []
+    consumed_ranges = []
 
     i = 0
-    last_consumed = 0
-
     while i < len(marks):
         mark = marks[i]
 
         if mark["type"] in (TRIGGER, CONDITION):
             clause, consumed, end = consume_clause(text, marks[i:])
             clauses.append(clause)
-            last_consumed = end
+            consumed_ranges.append((mark["start"], end))
             i += consumed
 
         elif mark["type"] == "choice":
             choice, consumed, end = consume_choice_effect(text, marks[i:])
             nested_effects.append(choice)
             modifiers.append("choice")
-            last_consumed = end
+            consumed_ranges.append((mark["start"], end))
             i += consumed
 
         elif mark["type"] == "optional":
             modifiers.append("optional")
-            last_consumed = mark["end"]
+            consumed_ranges.append((mark["start"], mark["end"]))
             i += 1
 
         else:
             i += 1
 
-    # Handle any trailing effect text
-    if last_consumed < len(text) and last_consumed != 0:
-        residual_effect = text[last_consumed:]
-        if residual_effect.strip():
-            nested_effects.append({"text": residual_effect.strip()})
+    # Add any unmarked residual text
+    unmarked_ranges = find_unmarked_ranges(len(text), consumed_ranges)
+    for start, end in unmarked_ranges:
+        residual = text[start:end].strip()
+        if residual and residual != text.strip():
+            nested_effects.append({"text": residual})
 
     if clauses:
         effect["clauses"] = clauses
@@ -570,18 +569,22 @@ def parse_equip(text, marks):
 
 def consume_clause(text, marks):
     mark = marks[0]
+    text = text[mark['start']:]
     mark_type = mark['type']
 
-    clause_end = text.find(',') + 1
+    end = re.search(r'[,.](\s*)', text)
+    to_consume = end.start() + 2
+    end_pos = mark['start'] + to_consume
 
-    clause_text = text[:clause_end].strip()
-    consumed = count_marks_in_range(marks, mark["start"], clause_end)
+    clause_text = text[:to_consume].strip()
+    consumed = count_marks_in_range(marks, mark["start"], end_pos)
     relevant_marks = [m for m in marks[:consumed] if m['type'] == mark_type]
 
     # Extract subjects between clause-start prefixes of the same type
     subjects = []
     for i, mark in enumerate(relevant_marks):
-        start = mark['end'] + 1
+        prefix_length = mark["end"] - mark["start"]
+        start = prefix_length + 1
 
         if i + 1 < len(relevant_marks):
             raw_chunk = text[start:relevant_marks[i + 1]['start']]
@@ -591,7 +594,7 @@ def consume_clause(text, marks):
             end = start + len(cleaned_chunk)
         else:
             # exclude trailing comma
-            end = clause_end - 1
+            end = to_consume - 2
 
         subject_text = text[start:end].strip()
         if subject_text:
@@ -603,7 +606,7 @@ def consume_clause(text, marks):
         "subjects": subjects
     }
 
-    return clause, consumed, clause_end
+    return clause, consumed, end_pos
 
 
 def consume_choice_effect(text, marks):
@@ -669,3 +672,18 @@ def shift_marks_relative_to_subtext(marks, base_offset):
 def find_effect_end(text, start):
     match = re.search(EFFECT_END_PATTERN, text[start:])
     return start + match.start() + 1 if match else len(text)
+
+def find_unmarked_ranges(text_len, consumed_ranges):
+    consumed_ranges = sorted(consumed_ranges)
+    unmarked = []
+
+    start = 0
+    for begin, end in consumed_ranges:
+        if start < begin:
+            unmarked.append((start, begin))
+        start = max(start, end)
+
+    if start < text_len:
+        unmarked.append((start, text_len))
+
+    return unmarked
