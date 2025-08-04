@@ -65,7 +65,7 @@ def strip_keywords(text, keywords):
 
     for line in lines:
         # Strip all parenthetical phrases aggressively
-        line_clean = re.sub(r'\([^)]*\)', '', line.strip())
+        line_clean = re.sub(r'( ?\([^)]*\))', '', line)
         line_lower = line_clean.lower()
 
         # Process keyword lines
@@ -252,27 +252,31 @@ def parse_text(text, marks):
     # First pass: divide text into chunks with respect to forward joins
     chunks = {}
     key = 1
+    segment_key = 0
+    segment_start = 0
     segment_text = ''
     segment_marks = []
-    segment_key = 0
     activated_ability = False
+
     while i < n:
         mark = marks[i]
         if mark['type'] == 'delimiter':
             if activated_ability:
-                if (mark['text'] != '\n') & (i != n-1):
+                if (mark['text'] != '\n') & (i != n - 1):
                     i += 1
                     continue
                 elif mark['text'] == '\n':
                     activated_ability = False
 
             end_pos = mark['end']
+            start_pos = start
             current_marks = marks_in_range(start, end_pos)
             current_text = text[start:end_pos]
 
             start = end_pos
             i += 1
 
+            # Outside forward join this is dropping on floor
             if current_text == '\n':
                 segment_text += current_text
                 segment_marks += current_marks
@@ -280,9 +284,10 @@ def parse_text(text, marks):
 
             if any(m['type'] == 'replacement' for m in current_marks):
                 chunks[key] = {
-                    "text": current_text.strip(),
+                    "text": current_text,
                     "marks": current_marks,
-                    "end_pos": end_pos
+                    "end_pos": end_pos,
+                    "start_pos": start_pos,
                 }
                 key += 1
                 continue
@@ -291,6 +296,7 @@ def parse_text(text, marks):
             is_bullet = current_text.startswith('\u2022')
 
             if is_forward_join:
+                segment_start = start_pos
                 segment_key = key
                 segment_text = current_text
                 segment_marks = current_marks
@@ -304,18 +310,20 @@ def parse_text(text, marks):
 
             elif segment_key:
                 chunks[segment_key] = {
-                    "text": segment_text.strip(),
+                    "text": segment_text,
                     "marks": segment_marks,
-                    "end_pos": segment_marks[-1]['end']
+                    "end_pos": segment_marks[-1]['end'],
+                    "start_pos": segment_start
                 }
                 segment_text = ''
                 segment_marks = []
                 segment_key = 0
 
             chunks[key] = {
-                "text": current_text.strip(),
+                "text": current_text,
                 "marks": current_marks,
-                "end_pos": end_pos
+                "end_pos": end_pos,
+                "start_pos": start_pos
             }
             key += 1
 
@@ -326,27 +334,29 @@ def parse_text(text, marks):
 
     if segment_key:
         chunks[segment_key] = {
-            "text": segment_text.strip(),
+            "text": segment_text,
             "marks": segment_marks,
-            "end_pos": segment_marks[-1]['end']
+            "end_pos": segment_marks[-1]['end'],
+            "start_pos": segment_start
         }
 
     # Find the position of the last delimiter mark (if any)
     last_delim = max((m for m in marks if m['type'] == 'delimiter'), key=lambda m: m['end'], default=None)
 
     # If there's unprocessed text or tail marks, add a final chunk
-    if last_delim['end'] < len(text.strip()):
+    if last_delim and last_delim['end'] < len(text):
         chunks[key] = {
-            "text": text[last_delim['end']:].strip(),
+            "text": text[last_delim['end']:],
             "marks": [m for m in marks if m['start'] >= last_delim['end']],
-            "end_pos": len(text)
+            "end_pos": len(text),
+            "start_pos": start
         }
 
     # Second pass: parse each chunk
     parsed = {}
     for k, chunk in chunks.items():
-        base_offset = chunk['marks'][0]['start'] if chunk['marks'] else 0
-        adjusted_marks = shift_marks_relative_to_subtext(chunk["marks"], base_offset)
+        start_pos = chunk['start_pos']
+        adjusted_marks = shift_marks_relative_to_subtext(chunk["marks"], chunk["start_pos"])
 
         # Store parsed result
         if any(m['type'] == 'replacement' for m in adjusted_marks):
@@ -366,13 +376,6 @@ def parse_text(text, marks):
             if next_chunk and any(m['type'] == 'replacement' for m in next_chunk['marks']):
                 replacement_end = next_chunk.get('end_pos', 0)
                 end_pos = max(end_pos, replacement_end)
-
-            # Determine start position for the text slice
-            prev_chunk = chunks.get(k - 1)
-            if prev_chunk:
-                start_pos = prev_chunk.get('end_pos', chunk['marks'][0]['start'])
-            else:
-                start_pos = 0
 
             # Assign text based on the range from start_pos to end_pos
             effect['text'] = text[start_pos:end_pos].strip()
@@ -430,14 +433,8 @@ def parse_effect(text, marks):
     while i < len(marks):
         mark = marks[i]
 
-        if mark["type"] == TRIGGER:
-            clause, consumed, end = consume_clause(text, marks[i:], TRIGGER)
-            clauses.append(clause)
-            last_consumed = end
-            i += consumed
-
-        elif mark["type"] == CONDITION:
-            clause, consumed, end = consume_clause(text, marks[i:], CONDITION)
+        if mark["type"] in (TRIGGER, CONDITION):
+            clause, consumed, end = consume_clause(text, marks[i:])
             clauses.append(clause)
             last_consumed = end
             i += consumed
@@ -459,9 +456,9 @@ def parse_effect(text, marks):
 
     # Handle any trailing effect text
     if last_consumed < len(text) and last_consumed != 0:
-        residual_effect = text[last_consumed:].strip()
-        if residual_effect:
-            nested_effects.append({"text": residual_effect})
+        residual_effect = text[last_consumed:]
+        if residual_effect.strip():
+            nested_effects.append({"text": residual_effect.strip()})
 
     if clauses:
         effect["clauses"] = clauses
@@ -473,12 +470,6 @@ def parse_effect(text, marks):
     return effect
 
 def parse_replacement(text, marks):
-    """
-    Parse replacement structures.
-
-    These appear to apply to effects, or in their absence just gameplay mechanics.
-    """
-
     replacement = {"text": text.strip()}
 
     replacement_effects = []
@@ -492,7 +483,7 @@ def parse_replacement(text, marks):
         mark = marks[i]
 
         if mark["type"] in (CONDITION, TRIGGER):
-            clause, consumed, end = consume_clause(text, marks[i:], mark["type"])
+            clause, consumed, end = consume_clause(text, marks[i:])
             clauses.append(clause)
             last_consumed = end
             i += consumed
@@ -507,13 +498,13 @@ def parse_replacement(text, marks):
 
     # After all clauses and known marks are consumed, grab the remaining text as the effect
     if last_consumed < len(text):
-        residual_effect = text[last_consumed:].strip()
+        residual_effect = text[last_consumed:]
         # Remove "instead"
         residual_effect = re.sub(EFFECT_REPLACEMENT_PATTERN, '', residual_effect)
         # Remove space before punctuation (.,;:)
         residual_effect = re.sub(r'\s+([.;\n])', r'\1', residual_effect)
-        if residual_effect:
-            replacement_effects.append(residual_effect)
+        if residual_effect.strip():
+            replacement_effects.append(residual_effect.strip())
 
     if clauses:
         replacement["clauses"] = clauses
@@ -538,17 +529,17 @@ def parse_activated_ability(text, marks):
     colon_mark = next((m for m in marks if m['type'] == 'cost_divider'), None)
     colon_pos = colon_mark['start'] if colon_mark else None
 
-    # Capture any extra cost like "Sacrifice CARDNAME"
-    extra_cost_text = text[last_cost_end:colon_pos].strip(' ,')
-    if extra_cost_text:
-        cost_parts.append(extra_cost_text)
+    # Capture any extra cost
+    extra_cost_text = text[last_cost_end:colon_pos]
+    if extra_cost_text.strip(' ,'):
+        cost_parts.append(extra_cost_text.strip(' ,'))
 
     # Residual effect text comes after colon
-    main_effect_text = text[colon_pos + 1:].strip()
+    main_effect_text = text[colon_pos + 1:]
     residual_marks = shift_marks_relative_to_subtext(marks, colon_pos + 1)
 
     return {
-        "text": text,
+        "text": text.strip(),
         "cost": cost_parts,
         "effects": parse_text(main_effect_text, residual_marks)
     }
@@ -564,12 +555,12 @@ def parse_equip(text, marks):
             last_cost_end = max(last_cost_end, mark['end'])
 
     # Add any trailing text after the last mana cost as an additional cost
-    trailing_cost_text = text[last_cost_end:].strip(' .\n')
-    if trailing_cost_text:
-        cost_parts.append(trailing_cost_text)
+    trailing_cost_text = text[last_cost_end:]
+    if trailing_cost_text.strip(' .\n'):
+        cost_parts.append(trailing_cost_text.strip(' .\n'))
 
     return {
-        "text": text,
+        "text": text.strip(),
         "cost": cost_parts,
         "effects": marks[0]['text'].strip()
     }
@@ -577,51 +568,41 @@ def parse_equip(text, marks):
 
 # --- Pattern Consumers ---
 
-def consume_clause(text, marks, clause_type):
+def consume_clause(text, marks):
     mark = marks[0]
+    mark_type = mark['type']
 
-    # Find clause end
-    comma_match = re.search(r',', text[mark["end"]:])
-    clause_end = mark["end"] + comma_match.start() + 1 if comma_match else len(text)
+    clause_end = text.find(',') + 1
 
-    clause_text = text[mark["start"]:clause_end].strip()
+    clause_text = text[:clause_end].strip()
+    consumed = count_marks_in_range(marks, mark["start"], clause_end)
+    relevant_marks = [m for m in marks[:consumed] if m['type'] == mark_type]
 
-    # Extract the text after the prefix to clause end
-    subject_text = text[mark["end"]:clause_end].strip()
+    # Extract subjects between clause-start prefixes of the same type
+    subjects = []
+    for i, mark in enumerate(relevant_marks):
+        start = mark['end'] + 1
 
-    # Find all prefixes of the same clause_type inside this clause_text
-    text_lower = clause_text.lower()
-    prefix_positions = []
-    for t, prefix, pattern in PREFIX_PATTERNS:
-        if t != clause_type:
-            continue
-        for m in pattern.finditer(text_lower):
-            prefix_positions.append(m.start())
-    prefix_positions.sort()
+        if i + 1 < len(relevant_marks):
+            raw_chunk = text[start:relevant_marks[i + 1]['start']]
 
-    if len(prefix_positions) <= 1:
-        # Single clause
-        subjects = [subject_text.strip().strip(',')]
-    else:
-        # Compound clause
-        subjects = []
-        for i, start_pos in enumerate(prefix_positions):
-            start = start_pos
-            end = prefix_positions[i + 1] if i + 1 < len(prefix_positions) else len(clause_text)
-            fragment = clause_text[start:end].strip().strip(',')
-            # Remove prefix from fragment start
-            prefix_pattern = re.compile(rf'^{re.escape(text_lower[start_pos:start_pos+len(prefix)])}', re.IGNORECASE)
-            fragment = prefix_pattern.sub('', fragment).strip()
-            if fragment:
-                subjects.append(fragment)
+            # Strip common delimiters like " and ", " or ", ", and", etc.
+            cleaned_chunk = re.sub(r'\s*(,?\s*(and|or))?\s*$', '', raw_chunk)
+            end = start + len(cleaned_chunk)
+        else:
+            # exclude trailing comma
+            end = clause_end - 1
+
+        subject_text = text[start:end].strip()
+        if subject_text:
+            subjects.append(subject_text)
 
     clause = {
-        "type": clause_type,
+        "type": mark_type,
         "text": clause_text,
         "subjects": subjects
     }
 
-    consumed = count_marks_in_range(marks, mark["start"], clause_end)
     return clause, consumed, clause_end
 
 
