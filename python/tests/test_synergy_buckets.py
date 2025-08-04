@@ -43,7 +43,19 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 "keywords": [
                     "Equip"
                 ]
-            }
+            },
+            {
+                "name": "Morgul-Knife Wound",
+                "rarity": "common",
+                "color_identity": [
+                    "B"
+                ],
+                "type_line": "Enchantment \u2014 Aura",
+                "oracle_text": "Enchant creature\nEnchanted creature gets -3/-0 and has \"At the beginning of your upkeep, exile this creature unless you pay 2 life.\"",
+                "keywords": [
+                    "Enchant"
+                ]
+            },
         ]
 
         self.expected_marks = {
@@ -97,6 +109,15 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                 {'type': 'delimiter', 'start': 169, 'end': 170, 'text': '\n'},
                 {'type': 'equip', 'start': 170, 'end': 176, 'text': 'Equip '},
                 {'type': 'mana_cost', 'start': 176, 'end': 179, 'text': '{4}'}
+            ],
+            "Morgul-Knife Wound": [
+                {'end': 17, 'start': 16, 'text': '\n', 'type': 'delimiter'},
+                {
+                    'end': 132,
+                    'start': 55,
+                    'text': '"At the beginning of your upkeep, exile this creature unless you pay 2 life."',
+                    'type': 'assigned_text'
+                }
             ]
         }
 
@@ -232,6 +253,14 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
                         "{4}"
                     ],
                     "effects": "Equip"
+                }
+            ],
+            "Morgul-Knife Wound": [
+                {
+                    "text": "Enchant creature"
+                },
+                {
+                    "text": "Enchanted creature gets -3/-0 and has \"At the beginning of your upkeep, exile this creature unless you pay 2 life.\""
                 }
             ]
         }

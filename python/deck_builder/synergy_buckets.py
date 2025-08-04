@@ -14,7 +14,7 @@ EFFECT_REPLACEMENT_PATTERN = re.compile(r'\binstead\b', re.IGNORECASE)
 EFFECT_COST_PATTERN = re.compile(r':')
 EFFECT_END_PATTERN = r'[.;\n]'
 
-MANA_SYMBOL_PATTERN = re.compile(r'\{(?:\d+|[WUBRGX])}', re.IGNORECASE)
+MANA_SYMBOL_PATTERN = re.compile(r'\{(?:[WUBRG]/[WUBRG]|[WUBRG]|\d+|X)}',re.IGNORECASE)
 TAP_SYMBOL_PATTERN = re.compile(r'\{T}', re.IGNORECASE)
 
 CORE_KEYWORDS = [
@@ -23,6 +23,7 @@ CORE_KEYWORDS = [
 ]
 
 EQUIP_PATTERN = re.compile(r'equip (?:\w+ )?', re.IGNORECASE)
+ASSIGNED_TEXT_PATTERN = re.compile(r'"(.*?)"')
 
 ALL_PREFIXES = [(TRIGGER, p) for p in TRIGGER_PREFIX] + [(CONDITION, p) for p in CONDITION_PREFIX]
 ALL_PREFIXES.sort(key=lambda x: -len(x[1]))  # Longest match first
@@ -109,6 +110,17 @@ def mark_structural_elements(text):
 
     while i < len(text):
         ch = text[i]
+
+        assigned_text_match = ASSIGNED_TEXT_PATTERN.match(text, i)
+        if assigned_text_match:
+            marks.append({
+                "type": "assigned_text",
+                "start": assigned_text_match.start(),
+                "end": assigned_text_match.end(),
+                "text": text[assigned_text_match.start():assigned_text_match.end()]
+            })
+            i = assigned_text_match.end()
+            continue
 
         # Mark delimiters
         if ch in {'.', ';', '\n'}:
