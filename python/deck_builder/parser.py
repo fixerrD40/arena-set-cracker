@@ -19,7 +19,7 @@ TAP_SYMBOL_PATTERN = re.compile(r'\{T}', re.IGNORECASE)
 
 CORE_KEYWORDS = [
     "deathtouch", "double strike", "first strike", "flash", "flying", "indestructible", "haste",
-    "lifelink", "reach", "trample", "vigilance"
+    "lifelink", "menace", "reach", "trample", "vigilance"
 ]
 
 EQUIP_PATTERN = re.compile(r'equip (?:\w+ )?', re.IGNORECASE)
