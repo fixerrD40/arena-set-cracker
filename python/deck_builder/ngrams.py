@@ -1,69 +1,18 @@
 import collections
-import re
-from typing import Set, List, Tuple, Dict, Optional
+from collections import defaultdict
+from typing import Set, List, Dict, Optional, Tuple
 
 Bigram = Tuple[str, str]
 Ngram = Tuple[Bigram, ...]
 
-ROUGH_MIN_FREQ = 3
-POLISHED_MIN_FREQ = 12
+ROUGH_MIN_PROP = 0.05
 
-# --- Regex for MTG-specific normalization ---
-RE_BUFF = re.compile(r'([+-]\d+)/([+-]\d+)')
-RE_STAT = re.compile(r'\b\d+/\d+\b')
-RE_NUM = re.compile(r'\b\d+|(x|a|one|two|three|four|five|six|seven|nine|fourteen)\b')
-
-
-def normalize_token(token: str) -> str:
-    token = RE_BUFF.sub("<BUFF>", token)
-    token = RE_STAT.sub("<STAT>", token)
-    token = RE_NUM.sub("<NUM>", token)
-    return token
-
-def build_plural_map(all_tokens: List[str]) -> Dict[str, str]:
-    plural_map = {}
-    tokens_set = set(all_tokens)
-
-    for token in tokens_set:
-        if token.endswith('s'):
-            singular = token[:-1]
-            if singular in tokens_set:
-                plural_map[token] = singular
-
-    return plural_map
-
-def normalize_texts(texts: List[str]) -> List[List[str]]:
-    # 1. Extract all tokens from all texts first
-    all_tokens = []
-    for text in texts:
-        text_lower = text.lower()
-        text_clean = re.sub(r"[^\w\s~/+-]", "", text_lower)
-        all_tokens.extend(text_clean.split())
-
-    all_tokens = [normalize_token(tok) for tok in all_tokens]
-
-    # 2. Build plural map
-    plural_map = build_plural_map(all_tokens)
-
-    # 3. Normalize each text using plural map
-    normalized_texts = []
-    for text in texts:
-        text_lower = text.lower()
-        text_clean = re.sub(r"[^\w\s~/+-]", "", text_lower)
-        raw_tokens = text_clean.split()
-        tokens = [normalize_token(tok) for tok in raw_tokens]
-        normalized = [plural_map.get(tok, tok) for tok in tokens]
-        normalized_texts.append(normalized)
-
-    return normalized_texts
-
-
-def extract_texts(flattened: Dict) -> List[str]:
+def extract_texts(flattened: Dict) -> List[List[str]]:
     all_texts = []
     for card in flattened.values():
         for field in ["conditions", "triggers", "effects"]:
             if card.get(field):
-                all_texts.extend(card[field])  # add each string individually
+                all_texts.extend(card[field])  # add each token list
     return all_texts
 
 
@@ -71,8 +20,11 @@ def extract_bigrams(tokens: List[str]) -> List[Bigram]:
     return [(tokens[i], tokens[i + 1]) for i in range(len(tokens) - 1)]
 
 
-def construct_ngrams(texts: List[str]) -> Dict[Ngram, int]:
-    tokenized_texts = normalize_texts(texts)
+def construct_ngrams(
+    tokenized_texts: List[List[str]],
+    num_cards: int,
+) -> Dict[Ngram, int]:
+    rough_min_freq = max(1, int(num_cards * ROUGH_MIN_PROP))
 
     # Count bigrams
     bigram_freqs = collections.Counter()
@@ -81,7 +33,7 @@ def construct_ngrams(texts: List[str]) -> Dict[Ngram, int]:
             bigram_freqs[bigram] += 1
 
     # Wrap bigrams as single-element ngrams if they meet min frequency
-    filtered = {(bg,): freq for bg, freq in bigram_freqs.items() if freq >= ROUGH_MIN_FREQ}
+    filtered = {(bg,): freq for bg, freq in bigram_freqs.items() if freq >= rough_min_freq}
     current_ngrams = filtered
     all_ngrams = dict(filtered)
 
@@ -104,10 +56,11 @@ def construct_ngrams(texts: List[str]) -> Dict[Ngram, int]:
 
 def validate_ngrams(
     candidates: Dict[Ngram, int],
-    tokenized_texts: List[List[str]],
-    freq_tolerance: int = 6
+    tokenized_texts: List[List[str]]
 ) -> Dict[Ngram, int]:
     validated = {}
+
+    freq_tolerance = ROUGH_MIN_PROP
 
     for ngram, predicted_freq in candidates.items():
         ngram_tokens = ngram_to_tokens(ngram)
@@ -130,6 +83,7 @@ def ngram_to_tokens(ngram: Ngram) -> List[str]:
         tokens.append(b)
     return tokens
 
+
 def count_ngram_in_tokens(tokens: List[str], ngram_tokens: List[str]) -> int:
     count = 0
     n = len(ngram_tokens)
@@ -137,6 +91,15 @@ def count_ngram_in_tokens(tokens: List[str], ngram_tokens: List[str]) -> int:
         if tokens[i:i + n] == ngram_tokens:
             count += 1
     return count
+
+
+def bigrams_to_phrase(bigrams: Ngram) -> str:
+    if not bigrams:
+        return ""
+    tokens = [bigrams[0][0]]
+    for _, b in bigrams:
+        tokens.append(b)
+    return " ".join(tokens)
 
 
 def merge_ngrams_via_chains(ngrams_freq: Dict[Ngram, int]) -> Dict[Ngram, int]:
@@ -206,21 +169,21 @@ def is_subsequence(small: Ngram, big: Ngram) -> bool:
     return all(b in it for b in small)
 
 
-def contest_ngram(ngrams: Dict[Ngram, int], supergram: Ngram) -> Dict[Ngram, int]:
+def contest_ngram(
+    ngrams: Dict[Ngram, int],
+    supergram: Ngram
+) -> Dict[Ngram, int]:
+    supergram_freq = ngrams.get(supergram, 0)
+    tolerance = .6
+
     return {
         ngram: freq
         for ngram, freq in ngrams.items()
-        if ngram != supergram and not is_subsequence(ngram, supergram)
+        if ngram != supergram and (
+            not is_subsequence(ngram, supergram) or
+            (freq / supergram_freq >= tolerance)
+        )
     }
-
-
-def bigrams_to_phrase(bigrams: Ngram) -> str:
-    if not bigrams:
-        return ""
-    tokens = [bigrams[0][0]]
-    for _, b in bigrams:
-        tokens.append(b)
-    return " ".join(tokens)
 
 
 def generalize_ngrams(
@@ -291,7 +254,7 @@ def generalize_ngrams(
                         if matches_generalized_pattern(window, generalized_pattern):
                             count += 1
 
-                if count >= ROUGH_MIN_FREQ and count > current_freq:
+                if count >= max(1, int(len(tokenized_texts) * ROUGH_MIN_PROP)) and count > current_freq:
                     generalized_candidates[generalized_ngram] = count
 
     # Merge with original ngrams
@@ -303,14 +266,40 @@ def generalize_ngrams(
     return merged
 
 
-def print_synergy_report(flattened: Dict):
-    texts = extract_texts(flattened)
-    merged_ngrams = construct_ngrams(texts)
-    selections = reduce_ngrams(merged_ngrams)
+def get_common_ngrams(
+    flattened: Dict,
+) -> dict[Ngram, int]:
+    tokenized_texts = extract_texts(flattened)
+    num_cards = len(flattened)
 
-    print("\nSelected reduced ngrams (contested):")
-    for ngram in sorted(selections, key=lambda x: (-len(x), -merged_ngrams[x])):
-        phrase = bigrams_to_phrase(ngram)
-        freq = merged_ngrams[ngram]
-        if freq > POLISHED_MIN_FREQ:
-            print(f"{phrase} — freq={freq} — len={len(ngram)}")
+    ngrams_freqs = construct_ngrams(tokenized_texts, num_cards)
+    selected_ngrams = reduce_ngrams(ngrams_freqs)
+
+    selected_ngrams_freqs = {
+        ngram: ngrams_freqs[ngram]
+        for ngram in selected_ngrams
+    }
+
+    # Sort by frequency in descending order
+    sorted_selected_ngrams_freqs = dict(
+        sorted(selected_ngrams_freqs.items(), key=lambda item: item[1], reverse=True)
+    )
+
+    return sorted_selected_ngrams_freqs
+
+
+def count_ngrams_in_corpus(
+    cards: Dict[str, Dict],
+    selected_ngrams: Set[Ngram]
+) -> Dict[Ngram, int]:
+    result = defaultdict(int)
+
+    for ngram in selected_ngrams:
+        tokens = ngram_to_tokens(ngram)
+
+        for card in cards.values():
+            for field in ["effects", "triggers", "conditions"]:
+                for token_list in card.get(field, []):
+                    result[ngram] += count_ngram_in_tokens(token_list, tokens)
+
+    return dict(result)

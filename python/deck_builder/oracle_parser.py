@@ -39,7 +39,6 @@ PREFIX_PATTERNS = [
 # SELF_PATTERN = re.compile(r'\bthis\s(card|creature|artifact|saga|token|aura|land|enchantment|spell)')
 # this turn/phase
 
-
 def parse_oracle(cards):
     result = {}
     for idx, card in enumerate(cards):

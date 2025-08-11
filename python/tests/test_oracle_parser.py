@@ -302,12 +302,12 @@ class TestExtractSynergyFramesReflexive(unittest.TestCase):
         }
 
     def test_extract_blocks_matches_expected(self):
-        from deck_builder.parser import parse_oracle
+        from deck_builder.oracle_parser import parse_oracle
         result = parse_oracle(self.cards)
         self.assertEqual(result, self.expected_blocks)
 
     def test_mark_structural_elements_all_cards(self):
-        from deck_builder.parser import mark_structural_elements, strip_keywords
+        from deck_builder.oracle_parser import mark_structural_elements, strip_keywords
 
         for card in self.cards:
             with self.subTest(card=card["name"]):

@@ -22,14 +22,19 @@ def color_identity_matches(card_colors, input_colors):
     card_set = {c.lower() for c in card_colors}
     input_set = set(input_colors)
 
-    if not card_set:
-        return True  # Include colorless cards
-
-    # 1. Mono-colored match: exactly one of the input colors
-    if len(card_set) == 1 and next(iter(card_set)) in input_set:
+    if not input_colors:
+        # no filtering: match everything
         return True
 
-    # 2. Multi-colored match: card includes all input colors
+    if input_colors == ["x"]:
+        # only colorless cards
+        return len(card_set) == 0
+
+    if len(input_set) == 1:
+        # mono-colored cards: exactly one color matching input
+        return len(card_set) == 1 and next(iter(card_set)) in input_set
+
+    # multi-colored: card contains at least all input colors (subset)
     return input_set.issubset(card_set)
 
 def extract_relevant_fields(cards):
@@ -47,25 +52,22 @@ def extract_relevant_fields(cards):
     ]
 
 def filter_by_color_identity(cards, input_colors):
-    if not input_colors:
-        return cards  # Return everything if no filter
-
+    input_colors = [c.lower() for c in input_colors]
     return [
         card for card in cards
         if color_identity_matches(card.get("color_identity", []), input_colors)
     ]
 
 def main(input_colors):
-    input_colors = [c.lower() for c in input_colors]
     all_cards = fetch_all_cards()
     cleaned_cards = extract_relevant_fields(all_cards)
     filtered_cards = filter_by_color_identity(cleaned_cards, input_colors)
 
-    if input_colors:
-        color_key = "".join(sorted(input_colors))
-        filename = f"lotr_{color_key}_cards.json"
-    else:
+    if not input_colors:
         filename = "lotr_all_cards.json"
+    else:
+        color_key = "".join(sorted([c.lower() for c in input_colors]))
+        filename = f"lotr_{color_key}_cards.json"
 
     with open(filename, "w", encoding="utf-8") as f:
         json.dump({"cards": filtered_cards}, f, indent=2)
