@@ -1,43 +1,70 @@
 import json
+from math import log
 from typing import List, Dict, Counter
+from collections import Counter
 from cards_transform import transform
 from oracle_parser import parse_oracle
 from ngrams import get_common_ngrams, count_ngrams_in_corpus, ngram_to_tokens, count_ngram_in_tokens
 from tokens import get_common_tokens
 
-
 VALID_COLORS = {"W", "U", "B", "R", "G"}
 
 
-def compare_token_frequencies(tokens1, tokens2, total1, total2):
-    freq1 = dict(tokens1)
-    freq2 = dict(tokens2)
-
-    result_tokens = []
-    for token in freq1:
-        if token in freq2:
-            prop1 = freq1[token] / total1
-            prop2 = freq2[token] / total2
-            if prop2 - prop1 >= 0.07:
-                result_tokens += [token]
-
-    return result_tokens
+def tfidf_score(freq_from, freq_to, total_from, total_to):
+    tf = freq_to / total_to if total_to else 0
+    idf = log((1 + total_from) / (1 + freq_from))
+    return tf * idf
 
 
-def compare_ngram_frequencies(ngrams1, ngrams2, total1, total2):
-    results = []
-    all_ngrams = set(ngrams1) | set(ngrams2)
-    for ngram in all_ngrams:
-        freq1 = ngrams1.get(ngram, 0)
-        freq2 = ngrams2.get(ngram, 0)
+def emergence_score(freq_global, freq_dual, freq_primary,
+                    total_global, total_dual, total_primary,
+                    w_dual=1, w_primary=0.5,
+                    min_support=3,
+                    blind_threshold=0.1):
+    """
+    Scores tokens or phrases based on their concentration as you
+    move from the full set → color pair → primary color.
 
-        prop1 = freq1 / total1 if total1 > 0 else 0
-        prop2 = freq2 / total2 if total2 > 0 else 0
+    - Emphasizes directional emergence.
+    - Avoids instability of ratio-based models.
+    - Penalizes low support terms.
+    - Incorporates a "blind" component to reduce high-frequency tokens
+      common everywhere (if a token's global frequency ratio exceeds blind_threshold, it gets zero score).
 
-        if prop2 - prop1 > 0.1:
-            results.append(ngram)
+    Args:
+        freq_global: frequency in global corpus
+        freq_dual: frequency in color pair subset
+        freq_primary: frequency in primary color subset
+        total_global, total_dual, total_primary: total counts for normalization
+        w_dual, w_primary: weights to emphasize emergence stages
+        min_support: minimum frequency in primary subset to consider
+        blind_threshold: threshold for ignoring very common tokens/phrases
 
-    return results
+    Returns:
+        Emergence score (>=0)
+    """
+
+    # Calculate proportions
+    p_global = freq_global / total_global if total_global else 0
+    p_dual = freq_dual / total_dual if total_dual else 0
+    p_primary = freq_primary / total_primary if total_primary else 0
+
+    # Blind filter: skip very common tokens/phrases globally
+    if p_global > blind_threshold:
+        return 0
+
+    # Directional increases from global→dual and dual→primary
+    delta_dual = p_dual - p_global
+    delta_primary = p_primary - p_dual
+
+    # Weighted total emergence score
+    total_emergence = (w_dual * delta_dual) + (w_primary * delta_primary)
+
+    # Filter low-support tokens/phrases
+    if freq_primary < min_support:
+        return 0
+
+    return max(0, total_emergence)
 
 
 def score_cards(
@@ -70,84 +97,116 @@ def score_cards(
     secondary = [secondary_color]
 
     cards_parsed_oracle = parse_oracle(cards)
-    all_transformed = transform(cards, cards_parsed_oracle)
+    transformed_cards = transform(cards, cards_parsed_oracle)
+    num_all = len(transformed_cards)
 
     colorless_cards = {
-        name: card for name, card in all_transformed.items()
+        name: card for name, card in transformed_cards.items()
         if card.get("color_identity", []) == []
     }
-
-    transformed_cards = {
-        name: card for name, card in all_transformed.items()
-        if len(card.get("color_identity", [])) == 1
-    }
-    num = len(transformed_cards)
 
     primary_cards = {
         name: card for name, card in transformed_cards.items()
         if card.get("color_identity", []) == primary
     }
-
-    secondary_cards = {
-        name: card for name, card in transformed_cards.items()
-        if card.get("color_identity", []) == secondary
-    }
-    num_secondary = len(secondary_cards)
+    num_primary = len(primary_cards)
 
     dual_cards = {
-        name: card for name, card in all_transformed.items()
-        if card.get("color_identity", []) == primary + secondary
+        name: card for name, card in transformed_cards.items()
+        if all(elem in card.get("color_identity", []) for elem in primary + secondary)
            or card.get("color_identity", []) == primary
            or card.get("color_identity", []) == secondary
     }
     num_dual = len(dual_cards)
 
     # === Token boost calculation ===
-    tokens_freqs = get_common_tokens(transformed_cards)
     dual_tokens_freqs = get_common_tokens(dual_cards)
-    secondary_tokens_freqs = get_common_tokens(secondary_cards)
+    dual_tokens_freqs_primary = Counter()
+    dual_tokens_freqs_all = Counter()
 
-    boosted_tokens = compare_token_frequencies(tokens_freqs, dual_tokens_freqs, num, num_dual) + compare_token_frequencies(secondary_tokens_freqs, dual_tokens_freqs, num_secondary, num_dual)
+    for token in dual_tokens_freqs:
+        for card in primary_cards.values():
+            types = [t.lower() for t in card.get("types", [])]
+            if token in types:
+                dual_tokens_freqs_primary[token] += 1
+
+        for card in transformed_cards.values():
+            types = [t.lower() for t in card.get("types", [])]
+            if token in types:
+                dual_tokens_freqs_all[token] += 1
+
+    token_scores = {}
+
+    for token in dual_tokens_freqs:
+        score = emergence_score(
+            dual_tokens_freqs_all[token],
+            dual_tokens_freqs[token],
+            dual_tokens_freqs_primary[token],
+            num_all,
+            num_dual,
+            num_primary
+        )
+
+        if score > 0:
+            token_scores[token] = score
 
     # === Phrase boost calculation ===
-    primary_ngrams_freqs = get_common_ngrams(primary_cards)
-    primary_ngrams_freqs_all = count_ngrams_in_corpus(transformed_cards, set(primary_ngrams_freqs.keys()))
     dual_ngrams_freqs = get_common_ngrams(dual_cards)
-    dual_ngrams_freqs_all = count_ngrams_in_corpus(transformed_cards, set(primary_ngrams_freqs.keys()))
-    secondary_ngrams_freqs = get_common_ngrams(dual_cards)
+    dual_ngrams_freqs_primary = count_ngrams_in_corpus(primary_cards, set(dual_ngrams_freqs.keys()))
+    dual_ngrams_freqs_all = count_ngrams_in_corpus(transformed_cards, set(dual_ngrams_freqs.keys()))
 
-    boosted_ngrams = compare_ngram_frequencies(dual_ngrams_freqs_all, dual_ngrams_freqs, num, num_dual) + compare_ngram_frequencies(primary_ngrams_freqs_all, primary_ngrams_freqs, num, len(primary_cards)) + compare_ngram_frequencies(secondary_ngrams_freqs, dual_ngrams_freqs, num_secondary, num_dual)
+    phrase_scores = {}
 
-    # Count how often each boosted token appears
-    token_counter = Counter(boosted_tokens)
-    phrase_counter = Counter(boosted_ngrams)
+    for ngram in dual_ngrams_freqs:
+        score = emergence_score(
+            dual_ngrams_freqs_all.get(ngram, 0),
+            dual_ngrams_freqs.get(ngram, 0),
+            dual_ngrams_freqs_primary.get(ngram, 0),
+            num_all,
+            num_dual,
+            num_primary
+        )
+
+        if score > 0:
+            phrase_scores[ngram] = score
 
     # === Scoring ===
     scored_cards = []
     for name, card in (dual_cards | colorless_cards).items():
-        score = 0
+        token_score = 0
+        phrase_score = 0
 
-        # Token scoring: types and keywords
+        # Token scoring: from types and keywords
         types = [t.lower() for t in card.get("types", [])]
         keywords = [k.lower() for k in card.get("keywords", [])]
 
-        for token in token_counter:
+        for token, weight in token_scores.items():
             if token in types or token in keywords:
-                score += token_counter[token]
+                token_score += weight
 
-        # Phrase scoring: conditions, triggers, effects
-        for ngram, weight in phrase_counter.items():
+        # Phrase scoring: from oracle fields
+        field_weights = {
+            "triggers": 1.5,
+            "effects": 1.0,
+            "conditions": 0.75
+        }
+
+        for ngram, tfidf_weight in phrase_scores.items():
             phrase_tokens = ngram_to_tokens(ngram)
 
-            for field in ["effects", "triggers", "conditions"]:
+            for field, field_weight in field_weights.items():
                 for token_list in card.get(field, []):
                     if count_ngram_in_tokens(token_list, phrase_tokens) > 0:
-                        score += weight
+                        # Boost phrase score by token synergy
+                        token_boost = 1 + 0.15 * token_score
+                        phrase_score += tfidf_weight * field_weight * token_boost
+                        break  # Only count once per field
 
-        if score > 0:
+        # Score threshold: only include relevant cards
+        if phrase_score > 0:
             scored_cards.append({
                 "name": name,
-                "score": score,
+                "score": phrase_score,
                 "colors": card.get("color_identity", []),
             })
 
