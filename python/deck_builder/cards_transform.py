@@ -83,6 +83,7 @@ def extract_leaf_effects(effects) -> List[str]:
 def flatten_card(card_name: str, metadata: Dict, parsed_oracle: List[Dict]) -> Dict:
     flat = {
         "name": card_name,
+        "rarity": metadata.get("rarity", ""),
         "types": [],
         "keywords": [],
         "triggers": [],

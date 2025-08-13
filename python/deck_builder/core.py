@@ -9,6 +9,13 @@ from tokens import get_common_tokens
 
 VALID_COLORS = {"W", "U", "B", "R", "G"}
 
+RARITY_PENALTY = {
+    "common":    1.00,
+    "uncommon":  0.8,
+    "rare":      0.7,
+    "mythic":    0.6
+}
+
 
 def tfidf_score(freq_from, freq_to, total_from, total_to):
     tf = freq_to / total_to if total_to else 0
@@ -18,53 +25,40 @@ def tfidf_score(freq_from, freq_to, total_from, total_to):
 
 def emergence_score(freq_global, freq_dual, freq_primary,
                     total_global, total_dual, total_primary,
-                    w_dual=1, w_primary=0.5,
-                    min_support=3,
-                    blind_threshold=0.1):
+                    w_dual, w_primary,
+                    alpha, beta):
     """
-    Scores tokens or phrases based on their concentration as you
-    move from the full set → color pair → primary color.
+    Scores phrases by combining emergence and absolute dual/primary presence.
 
-    - Emphasizes directional emergence.
-    - Avoids instability of ratio-based models.
-    - Penalizes low support terms.
-    - Incorporates a "blind" component to reduce high-frequency tokens
-      common everywhere (if a token's global frequency ratio exceeds blind_threshold, it gets zero score).
+    - Emphasizes delta from global → dual → primary
+    - Allows dual and primary presence to survive similarity with prior groups
+    - Applies soft penalty for globally common tokens
 
     Args:
-        freq_global: frequency in global corpus
-        freq_dual: frequency in color pair subset
-        freq_primary: frequency in primary color subset
-        total_global, total_dual, total_primary: total counts for normalization
-        w_dual, w_primary: weights to emphasize emergence stages
-        min_support: minimum frequency in primary subset to consider
-        blind_threshold: threshold for ignoring very common tokens/phrases
-
-    Returns:
-        Emergence score (>=0)
+        alpha: weight for p_dual in dual component (vs delta_dual)
+        beta: weight for p_primary in primary component (vs delta_primary)
     """
 
-    # Calculate proportions
+    if freq_primary < 3:
+        return 0
+
+    # Relative freqs
     p_global = freq_global / total_global if total_global else 0
     p_dual = freq_dual / total_dual if total_dual else 0
     p_primary = freq_primary / total_primary if total_primary else 0
 
-    # Blind filter: skip very common tokens/phrases globally
-    if p_global > blind_threshold:
-        return 0
-
-    # Directional increases from global→dual and dual→primary
+    # Delta components
     delta_dual = p_dual - p_global
     delta_primary = p_primary - p_dual
 
-    # Weighted total emergence score
-    total_emergence = (w_dual * delta_dual) + (w_primary * delta_primary)
+    # Blend emergence and presence
+    dual_component = (1 - alpha) * delta_dual + alpha * p_dual
+    primary_component = (1 - beta) * delta_primary + beta * p_primary
 
-    # Filter low-support tokens/phrases
-    if freq_primary < min_support:
-        return 0
+    # Full emergence model
+    total_emergence = (w_dual * dual_component) + (w_primary * primary_component)
 
-    return max(0, total_emergence)
+    return total_emergence
 
 
 def score_cards(
@@ -144,7 +138,11 @@ def score_cards(
             dual_tokens_freqs_primary[token],
             num_all,
             num_dual,
-            num_primary
+            num_primary,
+            1.2,
+            .6,
+            .2,
+            0
         )
 
         if score > 0:
@@ -164,11 +162,15 @@ def score_cards(
             dual_ngrams_freqs_primary.get(ngram, 0),
             num_all,
             num_dual,
-            num_primary
+            num_primary,
+            1.2,
+            .6,
+            .2,
+            .4
         )
 
         if score > 0:
-            phrase_scores[ngram] = score
+            phrase_scores[ngram] = score / 2
 
     # === Scoring ===
     scored_cards = []
@@ -186,7 +188,7 @@ def score_cards(
 
         # Phrase scoring: from oracle fields
         field_weights = {
-            "triggers": 1.5,
+            "triggers": 3.0,
             "effects": 1.0,
             "conditions": 0.75
         }
@@ -198,15 +200,24 @@ def score_cards(
                 for token_list in card.get(field, []):
                     if count_ngram_in_tokens(token_list, phrase_tokens) > 0:
                         # Boost phrase score by token synergy
-                        token_boost = 1 + 0.15 * token_score
+                        token_boost = 1 + 0.4 * token_score
                         phrase_score += tfidf_weight * field_weight * token_boost
                         break  # Only count once per field
 
+        total_score = phrase_score + token_score
+
+        # Combine all parsed oracle fields to estimate total text size
+        oracle_fields = card.get("triggers", []) + card.get("effects", []) + card.get("conditions", [])
+        text_length = sum(len(field) for field in oracle_fields)
+        score_density = total_score / (1 + text_length)
+        rarity_penalty = RARITY_PENALTY.get(card.get("rarity"))
+        score = (0.8 * total_score + 0.2 * score_density) * rarity_penalty
+
         # Score threshold: only include relevant cards
-        if phrase_score > 0:
+        if total_score > 0:
             scored_cards.append({
                 "name": name,
-                "score": phrase_score,
+                "score": score,
                 "colors": card.get("color_identity", []),
             })
 
