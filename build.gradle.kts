@@ -31,6 +31,7 @@ dependencies {
 
     implementation("org.springframework.cloud:spring-cloud-starter-openfeign")
 
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.2")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.2")
     implementation("io.swagger.core.v3:swagger-annotations-jakarta:2.2.28")
     implementation("org.liquibase:liquibase-core:4.31.0")
