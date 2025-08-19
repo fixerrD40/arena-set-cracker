@@ -1,7 +1,6 @@
 package com.example.arena_set_cracker.api
 
 import com.example.arena_set_cracker.api.model.Deck
-import com.example.arena_set_cracker.logging.Mdcs
 import com.example.arena_set_cracker.service.DeckService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -47,19 +46,18 @@ class DecksRestController(
         ],
         parameters = [
             Parameter(
-                name = "X-Set",
-                description = "The code representing the set to load decks for.",
+                name = "set",
+                description = "The set identifier.",
                 required = true,
-                `in` = ParameterIn.HEADER,
-                example = "FIN"
+                `in` = ParameterIn.PATH,
+                example = "1"
             )
         ]
     )
-    @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun loadDecks(): ResponseEntity<List<Deck>> {
-        if (Mdcs.RequestContext.set == null) return ResponseEntity(HttpStatus.BAD_REQUEST)
+    @GetMapping(path = ["/{set}"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun loadDecks(@PathVariable("set") set: Int): ResponseEntity<List<Deck>> {
 
-        return ResponseEntity.ok(service.getDecks())
+        return ResponseEntity.ok(service.getDecks(set))
     }
 
     @Operation(
@@ -95,20 +93,18 @@ class DecksRestController(
         ),
         parameters = [
             Parameter(
-                name = "X-Set",
-                description = "The code representing the set to be added.",
+                name = "set",
+                description = "The set identifier.",
                 required = true,
-                `in` = ParameterIn.HEADER,
-                example = "FIN"
+                `in` = ParameterIn.PATH,
+                example = "1"
             )
         ]
     )
-    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
-    fun insertDeck(@RequestBody deck: Deck): ResponseEntity<Deck> {
+    @PostMapping(path = ["/{set}"], consumes = [MediaType.APPLICATION_JSON_VALUE])
+    fun insertDeck(@PathVariable("set") set: Int, @RequestBody deck: Deck): ResponseEntity<Deck> {
         return try {
-            if (Mdcs.RequestContext.set == null) return ResponseEntity(HttpStatus.BAD_REQUEST)
-
-            ResponseEntity.status(HttpStatus.CREATED).body(service.saveDeck(deck))
+            ResponseEntity.status(HttpStatus.CREATED).body(service.saveDeck(deck, set))
         } catch (e: DataIntegrityViolationException) {
             ResponseEntity.status(HttpStatus.CONFLICT).build()
         }
@@ -168,7 +164,7 @@ class DecksRestController(
         parameters = [
             Parameter(
                 name = "id",
-                description = "The unique identifier of the deck to be deleted.",
+                description = "The unique identifier of the deck.",
                 required = true,
                 `in` = ParameterIn.PATH,
                 example = "42"

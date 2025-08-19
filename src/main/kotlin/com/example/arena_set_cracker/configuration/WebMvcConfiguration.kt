@@ -1,4 +1,4 @@
-package com.example.arena_set_cracker.http
+package com.example.arena_set_cracker.configuration
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.context.annotation.Configuration
