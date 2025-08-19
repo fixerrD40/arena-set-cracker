@@ -45,4 +45,15 @@ class JwtRequestFilter(
 
         filterChain.doFilter(request, response)
     }
+
+    companion object {
+        fun getAuthenticatedUserIdOrNull(): String? {
+            val auth = SecurityContextHolder.getContext().authentication
+
+            return when (val principal = auth?.principal) {
+                is String -> principal
+                else -> null
+            }
+        }
+    }
 }
