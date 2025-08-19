@@ -224,7 +224,7 @@ def score_cards(
                 "colors": card.get("color_identity", []),
             })
 
-    return sorted(scored_cards, key=lambda x: -x["score"])
+    return [card["name"] for card in sorted(scored_cards, key=lambda x: -x["score"])]
 
 
 def load_cards(path):
