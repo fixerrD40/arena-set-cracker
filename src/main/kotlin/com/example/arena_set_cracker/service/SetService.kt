@@ -13,6 +13,8 @@ class SetService(
     private val dao: SetRepository
 ) {
 
+    fun getSet(id: Int): MtgSet = dao.findById(id).get().toDomain()
+
     fun getSets(): List<MtgSet> {
         val user = SecurityContextHolder.getContext().authentication.principal as User
 

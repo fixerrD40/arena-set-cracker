@@ -5,6 +5,7 @@ import com.example.arena_set_cracker.service.RecommendationService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.enums.ParameterIn
+import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @Tag(name = "Recommendation Rest Controller", description = "Manage card recommendations.")
-@RequestMapping("recommend")
+@RequestMapping("api/recommend")
 class RecommendationRestController(
     private val recommendationService: RecommendationService
 ) {
@@ -27,8 +28,17 @@ class RecommendationRestController(
     @Operation(
         summary = "Recommend cards for a deck.",
         responses = [
-            ApiResponse(responseCode = "200", description = "Recommendation successful.",
-                content = [Content(schema = Schema(implementation = String::class, description = "Scored cards as a string."))]
+            ApiResponse(
+                responseCode = "200",
+                description = "Recommendation successful.",
+                content = [
+                    Content(
+                        mediaType = MediaType.APPLICATION_JSON_VALUE,
+                        array = ArraySchema(
+                            schema = Schema(implementation = String::class)
+                        )
+                    )
+                ]
             ),
             ApiResponse(responseCode = "404", description = "Deck not found."),
             ApiResponse(responseCode = "500", description = "Unexpected server error.")
@@ -43,8 +53,8 @@ class RecommendationRestController(
             )
         ]
     )
-    @PostMapping(path = ["deck/{id}"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun recommendDeck(@PathVariable("id") id: Int): ResponseEntity<String> {
+    @PostMapping(path = ["/deck/{id}"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun recommendDeck(@PathVariable("id") id: Int): ResponseEntity<List<String>> {
         val recommendation = runBlocking {
             JobManager.submitJob {
                 recommendationService.scoreCardsWithPython(id)

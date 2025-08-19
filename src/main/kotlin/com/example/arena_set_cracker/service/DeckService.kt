@@ -58,4 +58,9 @@ class DeckService(
     private fun parseDeck(raw: String): Map<String, Int> {
         return emptyMap()
     }
+
+    fun getDeckWithColors(deckId: Int): DeckEntity {
+        return dao.findByIdWithColors(deckId)
+            ?: throw IllegalArgumentException("Deck with ID $deckId not found.")
+    }
 }

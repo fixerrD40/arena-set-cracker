@@ -1,5 +1,6 @@
 package com.example.arena_set_cracker.security
 
+import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.service.UserService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -51,7 +52,7 @@ class JwtRequestFilter(
             val auth = SecurityContextHolder.getContext().authentication
 
             return when (val principal = auth?.principal) {
-                is String -> principal
+                is User -> principal.username
                 else -> null
             }
         }

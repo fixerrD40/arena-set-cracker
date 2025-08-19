@@ -1,7 +1,6 @@
 package com.example.arena_set_cracker.service
 
-import com.example.arena_set_cracker.persistence.DeckRepository
-import com.example.arena_set_cracker.persistence.SetRepository
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Service
 import java.io.BufferedWriter
@@ -11,17 +10,17 @@ import kotlin.coroutines.cancellation.CancellationException
 
 @Service
 class RecommendationService(
-    private val deckRepo: DeckRepository,
-    private val setRepo: SetRepository,
+    private val deckService: DeckService,
+    private val setService: SetService,
     private val scryfall: CachedScryfallService,
     private val objectMapper: ObjectMapper
 ) {
 
-    fun scoreCardsWithPython(deckId: Int): String {
-        val processBuilder = ProcessBuilder("python3", "score_cards.py")
+    fun scoreCardsWithPython(deckId: Int): List<String> {
+        val processBuilder = ProcessBuilder("python3", "python/deck_builder/core.py")
         val process = processBuilder.start()
 
-        val deck = deckRepo.findById(deckId).get()
+        val deck = deckService.getDeckWithColors(deckId)
         val primaryColor = deck.primaryColor
         val secondaryColors = deck.colors.filter { it != primaryColor }
 
@@ -30,7 +29,7 @@ class RecommendationService(
         }
         val secondaryColor = secondaryColors.first()
 
-        val setCode = setRepo.findById(deck.set).get().code
+        val setCode = setService.getSet(deck.set).code
 
         val cards = scryfall.getCardsBySetCode(setCode)
 
@@ -43,6 +42,14 @@ class RecommendationService(
             )
         )
 
+        val errorReader = Thread {
+            val stderr = process.errorStream.bufferedReader().readText()
+            if (stderr.isNotBlank()) {
+                println("Python stderr: $stderr")
+            }
+        }
+        errorReader.start()
+
         inputWriter.write(inputPayload)
         inputWriter.flush()
         inputWriter.close()
@@ -50,7 +57,7 @@ class RecommendationService(
         return try {
             val output = process.inputStream.bufferedReader().readText()
             process.waitFor(10, TimeUnit.SECONDS)
-            output
+            objectMapper.readValue(output, object : TypeReference<List<String>>() {})
         } catch (e: CancellationException) {
             process.destroyForcibly()
             throw e
