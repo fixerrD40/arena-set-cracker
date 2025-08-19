@@ -60,7 +60,8 @@ def validate_ngrams(
 ) -> Dict[Ngram, int]:
     validated = {}
 
-    freq_tolerance = .8
+    p_tolerance = .8
+    n_tolerance = 1
 
     for ngram, predicted_freq in candidates.items():
         ngram_tokens = ngram_to_tokens(ngram)
@@ -69,7 +70,7 @@ def validate_ngrams(
         for tokens in tokenized_texts:
             actual_freq += count_ngram_in_tokens(tokens, ngram_tokens)
 
-        if actual_freq >= int(predicted_freq * freq_tolerance) and actual_freq > 1:
+        if actual_freq >= int(predicted_freq * p_tolerance) or predicted_freq - actual_freq > n_tolerance and actual_freq > 1:
             validated[ngram] = actual_freq
 
     return validated
@@ -174,14 +175,15 @@ def contest_ngram(
     supergram: Ngram
 ) -> Dict[Ngram, int]:
     supergram_freq = ngrams.get(supergram, 0)
-    tolerance = .8
+    p_tolerance = .8
+    n_tolerance = 1
 
     return {
         ngram: freq
         for ngram, freq in ngrams.items()
         if ngram != supergram and (
             not is_subsequence(ngram, supergram)
-            or (freq != supergram_freq and supergram_freq / freq > tolerance)
+            or (freq != supergram_freq and supergram_freq / freq > p_tolerance and freq - supergram_freq > n_tolerance)
         )
     }
 
