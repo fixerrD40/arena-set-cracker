@@ -2,7 +2,7 @@ package com.example.arena_set_cracker.api.model
 
 enum class Dual(
     override val colors: Set<Color>
-) : ColorIdentity {
+) : Colors {
     AZORIUS(setOf(Color.W, Color.U)),
     DIMIR(setOf(Color.U, Color.B)),
     RAKDOS(setOf(Color.B, Color.R)),

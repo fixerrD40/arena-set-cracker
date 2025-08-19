@@ -2,7 +2,7 @@ package com.example.arena_set_cracker.api.model
 
 enum class Tri(
     override val colors: Set<Color>
-) : ColorIdentity {
+) : Colors {
     BANT(setOf(Color.W, Color.U, Color.G)),
     ESPER(setOf(Color.U, Color.W, Color.B)),
     JUND(setOf(Color.R, Color.G, Color.B)),

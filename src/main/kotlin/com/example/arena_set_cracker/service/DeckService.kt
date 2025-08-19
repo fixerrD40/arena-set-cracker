@@ -1,6 +1,5 @@
 package com.example.arena_set_cracker.service
 
-import com.example.arena_set_cracker.api.model.Color
 import com.example.arena_set_cracker.api.model.Deck
 import com.example.arena_set_cracker.persistence.DeckRepository
 import com.example.arena_set_cracker.persistence.model.DeckEntity
@@ -27,25 +26,26 @@ class DeckService(
         }
 
         return if (existing == null) {
-            val (colors, cards) = parseDeck(deck.raw)
             DeckEntity(
                 name = deck.name,
                 raw = deck.raw,
                 // I think making this brittle is good
                 set = set!!,
-                colors = colors,
-                cards = cards,
+                primaryColor = deck.identity.primary,
+                colors = deck.identity.colors,
+                cards = parseDeck(deck.raw),
                 tags = deck.tags,
                 notes = deck.notes
             )
         } else {
-            val (colors, cards) = if (existing.raw == deck.raw) existing.colors to existing.cards else parseDeck(deck.raw)
+            val cards = if (existing.raw == deck.raw) existing.cards else parseDeck(deck.raw)
             DeckEntity(
                 existing.id,
                 deck.name,
                 deck.raw,
                 existing.set,
-                colors,
+                deck.identity.primary,
+                deck.identity.colors,
                 cards,
                 deck.tags,
                 deck.notes,
@@ -55,7 +55,7 @@ class DeckService(
     }
 
     // TODO
-    private fun parseDeck(raw: String): Pair<Set<Color>, Map<String, Int>> {
-        return Pair(setOf(Color.R), emptyMap())
+    private fun parseDeck(raw: String): Map<String, Int> {
+        return emptyMap()
     }
 }
