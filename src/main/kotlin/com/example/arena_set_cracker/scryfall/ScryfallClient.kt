@@ -13,5 +13,5 @@ interface ScryfallClient {
     fun getAllSets(): SetListResponse
 
     @GetMapping("/cards/search")
-    fun getCardsBySet(@RequestParam("q") query: String): CardListResponse
+    fun getCardsBySet(@RequestParam("q") query: String, @RequestParam("page") page: Int): CardListResponse
 }

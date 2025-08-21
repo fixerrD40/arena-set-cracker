@@ -1,7 +1,6 @@
 package com.example.arena_set_cracker.service
 
 import com.example.arena_set_cracker.scryfall.ScryfallClient
-import com.example.arena_set_cracker.scryfall.model.CardListResponse
 import com.example.arena_set_cracker.scryfall.model.ScryfallCard
 import com.example.arena_set_cracker.scryfall.model.ScryfallSet
 import com.example.arena_set_cracker.scryfall.model.SetListResponse
@@ -21,8 +20,8 @@ class CachedScryfallService(
 
     private val cardListCache = Caffeine.newBuilder()
         .expireAfterWrite(30, TimeUnit.MINUTES)
-        .maximumSize(100) // one per set
-        .build<String, CardListResponse>()
+        .maximumSize(3)
+        .build<String, List<ScryfallCard>>()
 
     fun getAllSets(): SetListResponse {
         return setListCache.get("sets") {
@@ -40,7 +39,22 @@ class CachedScryfallService(
             ?: throw IllegalArgumentException("Invalid set code: $setCode")
 
         return cardListCache.get(setCode.lowercase()) {
-            scryfallClient.getCardsBySet("set:${setCode.lowercase()}")
-        }.data
+            fetchAllCardsBySet(setCode)
+        }
+    }
+
+    private fun fetchAllCardsBySet(setCode: String): List<ScryfallCard> {
+        val allCards = mutableListOf<ScryfallCard>()
+        var page = 1
+        var hasMore: Boolean
+
+        do {
+            val response = scryfallClient.getCardsBySet("set:${setCode.lowercase()}", page)
+            allCards.addAll(response.data)
+            hasMore = response.hasMore
+            page++
+        } while (hasMore)
+
+        return allCards
     }
 }
