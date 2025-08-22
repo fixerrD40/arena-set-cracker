@@ -8,12 +8,12 @@ object JobManager {
 
     // userId -> Job
     private val runningJobs = ConcurrentHashMap<String, Job>()
-    private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    private val coroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     fun <T> submitJob(task: suspend () -> T): Deferred<T> {
         val userId = getAuthenticatedUserIdOrNull()!!
 
-        // Optional: cancel existing job if running
+        // Cancel existing job for user
         runningJobs[userId]?.cancel()
 
         val deferredResult = coroutineScope.async {

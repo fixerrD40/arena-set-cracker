@@ -2,9 +2,8 @@ package com.example.arena_set_cracker.service
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.coroutines.*
 import org.springframework.stereotype.Service
-import java.io.BufferedWriter
-import java.io.OutputStreamWriter
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -16,51 +15,73 @@ class RecommendationService(
     private val objectMapper: ObjectMapper
 ) {
 
-    fun scoreCardsWithPython(deckId: Int): List<String> {
-        val processBuilder = ProcessBuilder("python3", "python/deck_builder/core.py")
-        val process = processBuilder.start()
-
+    suspend fun scoreCardsWithPython(deckId: Int): List<String> = coroutineScope {
         val deck = deckService.getDeckWithColors(deckId)
-        val primaryColor = deck.primaryColor
-        val secondaryColors = deck.colors.filter { it != primaryColor }
+        val primary = deck.primaryColor
+        val secondary = deck.colors.firstOrNull { it != primary }
+            ?: throw IllegalArgumentException("Expected dual-color deck. Found: ${deck.colors}")
 
-        require(secondaryColors.size == 1) {
-            "Only dual color decks supported for recommendation at this time. Found: ${deck.colors}"
-        }
-        val secondaryColor = secondaryColors.first()
-
-        val setCode = setService.getSet(deck.set).code
-
-        val cards = scryfall.getCardsBySetCode(setCode)
-
-        val inputWriter = BufferedWriter(OutputStreamWriter(process.outputStream))
-        val inputPayload = objectMapper.writeValueAsString(
+        val payload = objectMapper.writeValueAsString(
             mapOf(
-                "cards" to cards,
-                "primary_color" to primaryColor,
-                "secondary_color" to secondaryColor
+                "cards" to scryfall.getCardsBySetCode(setService.getSet(deck.set).code),
+                "primary_color" to primary,
+                "secondary_color" to secondary
             )
         )
 
-        val errorReader = Thread {
-            val stderr = process.errorStream.bufferedReader().readText()
-            if (stderr.isNotBlank()) {
-                println("Python stderr: $stderr")
+        val process = ProcessBuilder("python3", "python/deck_builder/core.py").start()
+
+        // Ensure subprocess is killed if coroutine is cancelled
+        val cancellationHandler = coroutineContext.job.invokeOnCompletion {
+            if (it is CancellationException) {
+                process.destroyForcibly()
             }
         }
-        errorReader.start()
 
-        inputWriter.write(inputPayload)
-        inputWriter.flush()
-        inputWriter.close()
+        try {
+            // Write payload to Python's stdin and flush it
+            process.outputStream.bufferedWriter().use { writer ->
+                writer.write(payload)
+                writer.flush()
+            }
 
-        return try {
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor(10, TimeUnit.SECONDS)
+            // Launch a coroutine to read stderr concurrently and log it
+            val stderrJob = launch(Dispatchers.IO) {
+                process.errorStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        // You can replace with your logger here
+                        println("Python stderr: $line")
+                    }
+                }
+            }
+
+            // Read stdout with timeout
+            val output = withTimeout(30_000) {
+                process.inputStream.bufferedReader().readText()
+            }
+
+            if (output.isBlank()) {
+                throw IllegalStateException("Subprocess returned no output")
+            }
+
+            // Wait for process to finish fully (with a timeout)
+            if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                throw IllegalStateException("Python process timed out")
+            }
+
+            // Make sure stderr is fully consumed before proceeding
+            stderrJob.join()
+
             objectMapper.readValue(output, object : TypeReference<List<String>>() {})
-        } catch (e: CancellationException) {
+        } catch (e: Exception) {
             process.destroyForcibly()
             throw e
+        } finally {
+            cancellationHandler.dispose()
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 }
