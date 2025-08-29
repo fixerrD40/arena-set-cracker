@@ -13,6 +13,11 @@ class UserService(
     private val passwordEncoder: PasswordEncoder
 ) {
 
+    fun getHankId(): Int? {
+        val hankUser = dao.findByUsername("Hank")
+        return hankUser?.id
+    }
+
     fun getUser(id: Int): User {
         return dao.findById(id).get().toDomain()
     }

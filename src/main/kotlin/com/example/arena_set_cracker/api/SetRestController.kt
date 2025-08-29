@@ -1,6 +1,7 @@
 package com.example.arena_set_cracker.api
 
 import com.example.arena_set_cracker.api.model.MtgSet
+import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.service.SetService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -15,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 
@@ -46,7 +48,11 @@ class SetRestController(
         ],
     )
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun loadSets(): ResponseEntity<List<MtgSet>> = ResponseEntity.ok(service.getSets())
+    fun loadSets(): ResponseEntity<List<MtgSet>> {
+        val user = SecurityContextHolder.getContext().authentication.principal as User
+
+        return ResponseEntity.ok(service.getSets(user.id!!))
+    }
 
     @Operation(
         summary = "addSet",
@@ -72,8 +78,9 @@ class SetRestController(
     @PostMapping
     fun addSet(@RequestBody set: MtgSet): ResponseEntity<MtgSet> {
         return try {
+            val user = SecurityContextHolder.getContext().authentication.principal as User
             // TODO validate set
-            ResponseEntity.status(HttpStatus.CREATED).body(service.saveSet(set))
+            ResponseEntity.status(HttpStatus.CREATED).body(service.saveSet(user.id!!, set))
         } catch (e: DataIntegrityViolationException) {
             ResponseEntity.status(HttpStatus.CONFLICT).build()
         }

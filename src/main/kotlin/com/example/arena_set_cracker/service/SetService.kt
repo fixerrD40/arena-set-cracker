@@ -1,33 +1,28 @@
 package com.example.arena_set_cracker.service
 
 import com.example.arena_set_cracker.api.model.MtgSet
-import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.persistence.SetRepository
 import com.example.arena_set_cracker.persistence.model.SetEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import java.time.Instant
 
 @Component
 class SetService(
-    private val dao: SetRepository
+    private val dao: SetRepository,
+    private val userService: UserService
 ) {
 
     fun getSet(id: Int): MtgSet = dao.findById(id).get().toDomain()
 
-    fun getSets(): List<MtgSet> {
-        val user = SecurityContextHolder.getContext().authentication.principal as User
-
+    fun getSets(user: Int): List<MtgSet> {
         return dao.findAll()
-            .filter { it.appUser == user.id }
+            .filter { it.appUser == user }
             .map { it.toDomain() }
     }
 
-    fun saveSet(set: MtgSet): MtgSet {
-        val user = SecurityContextHolder.getContext().authentication.principal as User
-
+    fun saveSet(user: Int, set: MtgSet): MtgSet {
         val entity = SetEntity(
-            appUser = user.id!!,
+            appUser = user,
             code = set.code,
             createdAt = Instant.now()
         )

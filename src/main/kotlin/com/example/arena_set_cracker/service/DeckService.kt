@@ -4,11 +4,14 @@ import com.example.arena_set_cracker.api.model.Deck
 import com.example.arena_set_cracker.persistence.DeckRepository
 import com.example.arena_set_cracker.persistence.model.DeckEntity
 import org.springframework.stereotype.Component
+import kotlin.jvm.optionals.getOrNull
 
 @Component
 class DeckService(
     private val dao: DeckRepository
 ) {
+
+    fun getDeckSet(deck: Int): Int? = dao.findById(deck).getOrNull()?.set
 
     fun getDecks(set: Int): List<Deck> = dao.findAllBySet(set).map { it.toDomain() }
 
