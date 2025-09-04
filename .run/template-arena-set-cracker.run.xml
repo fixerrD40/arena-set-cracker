@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="template-arena-set-cracker" type="JetRunConfigurationType">
+    <envs>
+      <env name="APP_CRYPTO_SECRET" value="MY_APP_CRYPTO_SECRET" />
+      <env name="SMTP_HOST" value="MY_SMTP_HOST" />
+      <env name="SMTP_PASS" value="MY_SMTP_PASS" />
+      <env name="SMTP_PORT" value="MY_SMTP_PORT" />
+      <env name="SMTP_USER" value="MY_SMTP_USER" />
+    </envs>
+    <option name="MAIN_CLASS_NAME" value="com.example.arena_set_cracker.ArenaSetCrackerApplicationKt" />
+    <module name="arena-set-cracker.main" />
+    <shortenClasspath name="NONE" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

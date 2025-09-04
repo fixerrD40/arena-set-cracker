@@ -44,7 +44,7 @@ class SecurityConfig {
             .authorizeHttpRequests {
                 it
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                    .requestMatchers("/authenticate", "/register", "/error", "/public/**").permitAll()
+                    .requestMatchers("/auth/**", "/error", "/public/**").permitAll()
                     .requestMatchers("/api/**").authenticated()
             }
             .sessionManagement {

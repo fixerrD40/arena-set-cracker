@@ -3,3 +3,4 @@ spring:
     import:
       - classpath:spring/datasource.yml
       - classpath:spring/liquibase.yml
+      - classpath:spring/mail.yml

@@ -5,28 +5,17 @@ import io.jsonwebtoken.Claims
 import io.jsonwebtoken.JwtParser
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.SignatureAlgorithm
-import io.jsonwebtoken.security.Keys
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.stereotype.Component
 import java.util.*
 import java.util.function.Function
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
 
 @Component
-class JwtUtil {
-
-    private val secretKeyBase64 = generateKey()
-    private val key: SecretKey = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secretKeyBase64))
-    private val parser: JwtParser = Jwts.parserBuilder()
-        .setSigningKey(key)
-        .build()
-
-    private final fun generateKey(): String {
-        val keyGen = KeyGenerator.getInstance("HmacSHA256")
-        keyGen.init(256)
-        return Base64.getEncoder().encodeToString(keyGen.generateKey().encoded)
-    }
+class JwtUtil(
+    crypto: CryptoUtil
+) {
+    private val key = crypto.getSigningKey()
+    private val parser: JwtParser = Jwts.parserBuilder().setSigningKey(key).build()
 
     fun generateToken(user: User): String {
         val now = Date()

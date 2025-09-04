@@ -9,10 +9,11 @@ import java.time.Instant
 @Table(name = "users")
 data class UserEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Int = 0,
+    val id: Int? = null,
+    val emailHash: String,
     val username: String,
     val passwordHash: String,
-    val createdAt: Instant? = null
+    val createdAt: Instant
 ) {
-    fun toDomain(): User = User(id, username, passwordHash)
+    fun toDomain(): User = User(id, emailHash, username, passwordHash)
 }
