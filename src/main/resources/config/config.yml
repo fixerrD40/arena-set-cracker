@@ -2,4 +2,5 @@ spring:
   config:
     import:
       - classpath:config/app.yml
+      - classpath:config/aws.yml
       - classpath:config/feign.yml

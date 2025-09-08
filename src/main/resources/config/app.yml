@@ -1,3 +1,4 @@
 app:
   base-url: "${APP_HOST:http://localhost:8080}"
   crypto-secret: "${APP_CRYPTO_SECRET}"
+  mail: "${APP_MAIL_SERVICE:AWSSES}"

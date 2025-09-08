@@ -5,8 +5,6 @@ import com.example.arena_set_cracker.persistence.PasswordResetRepository
 import com.example.arena_set_cracker.persistence.model.PasswordResetEntity
 import com.example.arena_set_cracker.security.CryptoUtil
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.mail.SimpleMailMessage
-import org.springframework.mail.javamail.JavaMailSender
 import org.springframework.stereotype.Component
 import java.time.Duration
 import java.time.Instant
@@ -17,7 +15,7 @@ class PasswordResetService(
     private val dao: PasswordResetRepository,
     private val users: UserService,
     private val crypto: CryptoUtil,
-    private val mailSender: JavaMailSender,
+    private val mailSender: MailService,
     @Value("\${app.base-url}") private val baseUrl: String
 ) {
 
@@ -30,13 +28,11 @@ class PasswordResetService(
         val rawToken = generateAndSaveToken(user)
         val resetLink = "$baseUrl/reset-password?token=$rawToken"
 
-        val message = SimpleMailMessage().apply {
-            setTo(email)
-            subject = "Reset Your Password"
-            text = "You requested a password reset. Click the link below to reset your password:\n\n$resetLink\n\nIf you didn't request this, you can ignore this email."
-        }
-
-        mailSender.send(message)
+        mailSender.sendEmail(
+            toAddress = email,
+            subject = "Reset Your Password",
+            body = "You requested a password reset. Click the link below to reset your password:\n\n$resetLink\n\nIf you didn't request this, you can ignore this email."
+        )
     }
 
     fun resetPassword(token: String, newPassword: String) {

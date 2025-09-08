@@ -1,0 +1,4 @@
+aws:
+  region: "${AWS_REGION:us-east-2}"
+  ses:
+    email: "${APP_SES_EMAIL}"
