@@ -4,6 +4,7 @@ import com.example.arena_set_cracker.api.model.User
 import com.example.arena_set_cracker.persistence.PasswordResetRepository
 import com.example.arena_set_cracker.persistence.model.PasswordResetEntity
 import com.example.arena_set_cracker.security.CryptoUtil
+import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.time.Duration
@@ -19,27 +20,32 @@ class PasswordResetService(
     @Value("\${app.base-url}") private val baseUrl: String
 ) {
 
+    @Transactional
     fun requestPasswordReset(email: String) {
         val user = users.getUser(email) ?: return
 
-        if (canRequestReset(user)) return
+        if (canRequestReset(user)) {
+            dao.deleteByAppUser(user.id!!)
+            val rawToken = generateAndSaveToken(user)
+            val resetLink = "$baseUrl/reset-password?token=$rawToken"
 
-        dao.deleteByAppUser(user.id!!)
-        val rawToken = generateAndSaveToken(user)
-        val resetLink = "$baseUrl/reset-password?token=$rawToken"
-
-        mailSender.sendEmail(
-            toAddress = email,
-            subject = "Reset Your Password",
-            body = "You requested a password reset. Click the link below to reset your password:\n\n$resetLink\n\nIf you didn't request this, you can ignore this email."
-        )
+            mailSender.sendEmail(
+                toAddress = email,
+                subject = "Reset Your Password",
+                body = "You requested a password reset. Click the link below to reset your password:\n\n$resetLink\n\nIf you didn't request this, you can ignore this email."
+            )
+        }
     }
 
+    @Transactional
     fun resetPassword(token: String, newPassword: String) {
         val hash = crypto.hmacSha256(token)
-        val user = dao.findValidByTokenHash(hash)!!.id!!
+        val passwordReset = dao.findValidByTokenHash(hash)!!
 
-        users.resetUserPassword(user, newPassword)
+        passwordReset.used = true
+        dao.save(passwordReset)
+
+        users.resetUserPassword(passwordReset.id!!, newPassword)
     }
 
     private fun canRequestReset(user: User): Boolean {
@@ -47,7 +53,7 @@ class PasswordResetService(
         return recentReset == null || Duration.between(recentReset.createdAt, Instant.now()) > Duration.ofHours(24)
     }
 
-    private fun generateAndSaveToken(user: User) {
+    private fun generateAndSaveToken(user: User): String {
         val token = UUID.randomUUID().toString()
         val tokenHash = crypto.hmacSha256(token)
 
@@ -59,5 +65,6 @@ class PasswordResetService(
         )
 
         dao.save(entity)
+        return token
     }
 }
