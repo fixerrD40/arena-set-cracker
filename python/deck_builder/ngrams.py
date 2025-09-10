@@ -85,6 +85,15 @@ def ngram_to_tokens(ngram: Ngram) -> List[str]:
     return tokens
 
 
+def ngram_to_string(ngram: Ngram) -> str:
+    if not ngram:
+        return ""
+    tokens = [ngram[0][0]]
+    for a, b in ngram:
+        tokens.append(b)
+    return " ".join(tokens)
+
+
 def count_ngram_in_tokens(tokens: List[str], ngram_tokens: List[str]) -> int:
     count = 0
     n = len(ngram_tokens)

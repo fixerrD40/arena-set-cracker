@@ -1,56 +1,30 @@
 import json
 import sys
 from typing import List, Dict, Counter
-from collections import Counter
+from collections import Counter, defaultdict
 from cards_transform import transform
 from oracle_parser import parse_oracle
-from ngrams import get_common_ngrams, count_ngrams_in_corpus, ngram_to_tokens, count_ngram_in_tokens
+from ngrams import get_common_ngrams, count_ngrams_in_corpus, ngram_to_tokens, count_ngram_in_tokens, ngram_to_string
 from tokens import get_common_tokens
 
 VALID_COLORS = {"W", "U", "B", "R", "G"}
-
-RARITY_PENALTY = {
-    "common":    1.00,
-    "uncommon":  0.75,
-    "rare":      0.5,
-    "mythic":    0.4
-}
+ORACLE_FIELDS = ["triggers", "effects", "conditions"]
 
 
-def emergence_score(freq_global, freq_dual, freq_primary,
-                    total_global, total_dual, total_primary,
-                    w_dual, w_primary,
-                    alpha, beta):
-    """
-    Scores phrases by combining emergence and absolute dual/primary presence.
-    Applies an explicit penalty for flat distributions.
-    """
+def emergence_score(freq_a, freq_b, total_a, total_b):
+    p_a = freq_a / total_a if total_a else 0
+    p_b = freq_b / total_b if total_b else 0
 
-    if freq_primary < 3:
-        return 0
-
-    # Relative frequencies
-    p_global = freq_global / total_global if total_global else 0
-    p_dual = freq_dual / total_dual if total_dual else 0
-    p_primary = freq_primary / total_primary if total_primary else 0
-
-    # Delta components
-    delta_dual = p_dual - p_global
-    delta_primary = p_primary - p_dual
-
-    # Core emergence score
-    dual_component = (1 - alpha) * delta_dual + alpha * p_dual
-    primary_component = (1 - beta) * delta_primary + beta * p_primary
-    total_emergence = (w_dual * dual_component) + (w_primary * primary_component)
-
-    return total_emergence
+    delta = p_b - p_a
+    alpha = .2
+    return max(0, (1 - alpha) * delta + alpha * p_b)
 
 
 def score_cards(
     data: List[Dict],
     primary_color: str,
     colors: List[str]
-) -> List[Dict]:
+) -> dict[str, dict[str, List[str]]]:
     """
     Scores and ranks cards based on match with emergent tokens/phrases from
     primary/secondary color comparisons.
@@ -75,11 +49,11 @@ def score_cards(
     cards_parsed_oracle = parse_oracle(data)
     all_cards = transform(data, cards_parsed_oracle)
 
-    cards = {
+    mono_cards = {
         name: card for name, card in all_cards.items()
         if len(card.get("color_identity", [])) == 1
     }
-    num = len(cards)
+    num = len(mono_cards)
 
     colorless_cards = {
         name: card for name, card in all_cards.items()
@@ -114,7 +88,7 @@ def score_cards(
             if token in types:
                 dual_tokens_freqs_primary[token] += 1
 
-        for card in cards.values():
+        for card in mono_cards.values():
             if token == 'equip':
                 if token in [k.lower() for k in card.get("keywords", [])]:
                     dual_tokens_freqs_all[token] += 1
@@ -123,130 +97,96 @@ def score_cards(
             if token in types:
                 dual_tokens_freqs_all[token] += 1
 
-    token_scores = {}
+    dual_emergent = {}
+    primary_emergent = {}
 
     for token in dual_tokens_freqs:
-        score = emergence_score(
-            dual_tokens_freqs_all[token],
-            dual_tokens_freqs[token],
-            dual_tokens_freqs_primary[token],
-            num,
-            num_dual,
-            num_primary,
-            1,
-            1,
-            0,
-            0
-        )
+        dual = emergence_score(dual_tokens_freqs_all[token], dual_tokens_freqs[token], num, num_dual)
+        primary = emergence_score(dual_tokens_freqs[token], dual_tokens_freqs_primary[token], num_dual, num_primary)
 
-        if score > 0:
-            token_scores[token] = score
+        if dual > .07:
+            dual_emergent[token] = dual
+        if primary > .07:
+            primary_emergent[token] = primary
 
     # === Phrase boost calculation ===
     dual_ngrams_freqs = get_common_ngrams(dual_cards)
     dual_ngrams_freqs_primary = count_ngrams_in_corpus(primary_cards, set(dual_ngrams_freqs.keys()))
-    dual_ngrams_freqs_all = count_ngrams_in_corpus(cards, set(dual_ngrams_freqs.keys()))
-
-    phrase_scores = {}
+    dual_ngrams_freqs_all = count_ngrams_in_corpus(mono_cards, set(dual_ngrams_freqs.keys()))
 
     for ngram in dual_ngrams_freqs:
-        score = emergence_score(
-            dual_ngrams_freqs_all.get(ngram, 0),
-            dual_ngrams_freqs.get(ngram, 0),
-            dual_ngrams_freqs_primary.get(ngram, 0),
-            num,
-            num_dual,
-            num_primary,
-            .5,
-            .5,
-        .4,
-            .4
-        )
+        dual = emergence_score(dual_ngrams_freqs_all[ngram], dual_ngrams_freqs[ngram], num, num_dual)
+        primary = emergence_score(dual_ngrams_freqs[ngram], dual_ngrams_freqs_primary[ngram], num_dual, num_primary)
 
-        if score > 0:
-            phrase_scores[ngram] = score
+        if dual > .07:
+            dual_emergent[ngram] = dual
+        if primary > .07:
+            primary_emergent[ngram] = primary
 
-    # === Scoring ===
-    scored_cards = []
-    for name, card in (dual_cards | colorless_cards).items():
-        token_score = 0
-        phrase_score = 0
+    relevant_cards = {**dual_cards, **colorless_cards}
 
-        # Phrase scoring: from oracle fields
-        field_weights = {
-            "triggers": 3.0,
-            "effects": 1.0,
-            "conditions": 1.0
-        }
+    dual_element_to_cards = defaultdict(list)
+    primary_element_to_cards = defaultdict(list)
 
-        # Token scoring: from types and keywords
-        types = [t.lower() for t in card.get("types", [])]
-        keywords = [k.lower() for k in card.get("keywords", [])]
+    # === Match elements to cards
+    for element, _ in dual_emergent.items():
+        for name, card in relevant_cards.items():
+            if isinstance(element, str):
+                if card_has_token(card, element):
+                    dual_element_to_cards[element].append(name)
+            else:
+                if card_has_phrase(card, element):
+                    dual_element_to_cards[ngram_to_string(element)].append(name)
 
-        for token, weight in token_scores.items():
-            # Score for presence in types or keywords
-            if token in types:
-                token_score += weight
-            if token in keywords:
-                phrase_score += weight
+    for element, _ in primary_emergent.items():
+        for name, card in relevant_cards.items():
+            if isinstance(element, str):
+                if card_has_token(card, element):
+                    primary_element_to_cards[element].append(name)
+            else:
+                if card_has_phrase(card, element):
+                    primary_element_to_cards[ngram_to_string(element)].append(name)
 
-            # Score for presence in parsed oracle fields
-            for field, field_weight in field_weights.items():
-                for token_list in card.get(field, []):
-                    if token in token_list:
-                        token_score += weight * field_weight
-                        break  # Avoid double-counting per field
+    return {
+        "dual_emergent": dict(dual_element_to_cards),
+        "primary_emergent": dict(primary_element_to_cards)
+    }
 
-        for ngram, weight in phrase_scores.items():
-            phrase_tokens = ngram_to_tokens(ngram)
 
-            for field, field_weight in field_weights.items():
-                for token_list in card.get(field, []):
-                    if count_ngram_in_tokens(token_list, phrase_tokens) > 0:
-                        # Boost phrase score by token synergy
-                        token_boost = 1 + 0.4 * token_score
-                        phrase_score += weight * field_weight * token_boost
-                        break  # Only count once per field
+def card_has_token(card, token):
+    if token == 'equip':
+        return token in [k.lower() for k in card.get("keywords", [])]
+    if token in [t.lower() for t in card.get("types", [])]:
+        return True
+    for field in ORACLE_FIELDS:
+        for token_list in card.get(field, []):
+            if token in token_list:
+                return True
+    return False
 
-        total_score = phrase_score + token_score
-        rarity_penalty = RARITY_PENALTY.get(card.get("rarity"))
-        score = total_score * rarity_penalty
 
-        # Score threshold: only include relevant cards
-        if total_score > 0:
-            scored_cards.append({
-                "name": name,
-                "score": score,
-                "colors": card.get("color_identity", []),
-            })
-
-    return [card["name"] for card in sorted(scored_cards, key=lambda x: -x["score"])]
+def card_has_phrase(card, phrase_ngram):
+    phrase_tokens = ngram_to_tokens(phrase_ngram)
+    for field in ORACLE_FIELDS:
+        for token_list in card.get(field, []):
+            if count_ngram_in_tokens(token_list, phrase_tokens) > 0:
+                return True
+    return False
 
 
 def load_cards(path):
     with open(path, "r") as f:
         return json.load(f)
 
+
 if __name__ == "__main__":
+    input_data = json.load(sys.stdin)
 
-    deck_primary_color = 'B'
-    deck_colors = ['B', 'W']
+    cards = input_data["cards"]
+    deck_primary_color = input_data["primary_color"]
+    deck_colors = input_data["colors"]
 
-    data = load_cards('../lotr_all_cards.json')
-    card_data = data["cards"]
+    result = score_cards(cards, deck_primary_color, deck_colors)
 
-    results = score_cards(card_data, deck_primary_color, deck_colors)
-    print(json.dumps(results, indent=2))
-
-
-# if __name__ == "__main__":
-#     input_data = json.load(sys.stdin)
-#
-#     cards = input_data["cards"]
-#     deck_primary_color = input_data["primary_color"]
-#     deck_colors = input_data["colors"]
-#
-#     result = score_cards(cards, primary, colors)
-#
-#     print(json.dumps(result))
-#     sys.stdout.flush()
+    print(json.dumps(result))
+    sys.stdout.flush()
