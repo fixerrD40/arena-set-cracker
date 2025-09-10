@@ -49,7 +49,7 @@ def emergence_score(freq_global, freq_dual, freq_primary,
 def score_cards(
     data: List[Dict],
     primary_color: str,
-    secondary_color: str
+    colors: List[str]
 ) -> List[Dict]:
     """
     Scores and ranks cards based on match with emergent tokens/phrases from
@@ -58,7 +58,7 @@ def score_cards(
     Args:
         data: List of card dicts (raw from Scryfall).
         primary_color: e.g., 'U'
-        secondary_color: e.g., 'G'
+        colors: e.g., ['U', 'G']
 
     Returns:
         List of dicts with name and score, sorted by score descending.
@@ -68,12 +68,9 @@ def score_cards(
     if primary_color not in VALID_COLORS:
         raise ValueError(f"Invalid primary color '{primary_color}'. Must be one of {VALID_COLORS}")
 
-    primary = [primary_color]
-
-    if secondary_color not in VALID_COLORS:
-        raise ValueError(f"Invalid secondary color '{secondary_color}'. Must be one of {VALID_COLORS}")
-
-    secondary = [secondary_color]
+    for color in colors:
+        if color not in VALID_COLORS:
+            raise ValueError(f"Invalid support color '{colors}'. Must be one of {VALID_COLORS}")
 
     cards_parsed_oracle = parse_oracle(data)
     all_cards = transform(data, cards_parsed_oracle)
@@ -91,15 +88,14 @@ def score_cards(
 
     primary_cards = {
         name: card for name, card in all_cards.items()
-        if card.get("color_identity", []) == primary
+        if card.get("color_identity", []) == [primary_color]
     }
     num_primary = len(primary_cards)
 
     dual_cards = {
         name: card for name, card in all_cards.items()
-        if all(elem in card.get("color_identity", []) for elem in primary + secondary)
-           or card.get("color_identity", []) == primary
-           or card.get("color_identity", []) == secondary
+        if set(card.get("color_identity", [])) <= set(colors)
+           and card.get("color_identity", []) != []
     }
     num_dual = len(dual_cards)
 
@@ -231,15 +227,26 @@ def load_cards(path):
     with open(path, "r") as f:
         return json.load(f)
 
-
 if __name__ == "__main__":
-    input_data = json.load(sys.stdin)
 
-    cards = input_data["cards"]
-    primary = input_data["primary_color"]
-    secondary = input_data["secondary_color"]
+    deck_primary_color = 'B'
+    deck_colors = ['B', 'W']
 
-    result = score_cards(cards, primary, secondary)
+    data = load_cards('../lotr_all_cards.json')
+    card_data = data["cards"]
 
-    print(json.dumps(result))
-    sys.stdout.flush()
+    results = score_cards(card_data, deck_primary_color, deck_colors)
+    print(json.dumps(results, indent=2))
+
+
+# if __name__ == "__main__":
+#     input_data = json.load(sys.stdin)
+#
+#     cards = input_data["cards"]
+#     deck_primary_color = input_data["primary_color"]
+#     deck_colors = input_data["colors"]
+#
+#     result = score_cards(cards, primary, colors)
+#
+#     print(json.dumps(result))
+#     sys.stdout.flush()
