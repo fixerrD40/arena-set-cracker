@@ -5,9 +5,8 @@ import com.example.arena_set_cracker.service.RecommendationService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.enums.ParameterIn
-import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Content
-import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import kotlinx.coroutines.runBlocking
@@ -34,9 +33,7 @@ class RecommendationRestController(
                 content = [
                     Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
-                        array = ArraySchema(
-                            schema = Schema(implementation = String::class)
-                        )
+                        examples = [ExampleObject(RECOMMENDATION)]
                     )
                 ]
             ),
@@ -54,7 +51,7 @@ class RecommendationRestController(
         ]
     )
     @PostMapping(path = ["/deck/{id}"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun recommendDeck(@PathVariable("id") id: Int): ResponseEntity<List<String>> {
+    fun recommendDeck(@PathVariable("id") id: Int): ResponseEntity<String> {
         val recommendation = runBlocking {
             JobManager.submitJob {
                 recommendationService.scoreCardsWithPython(id)
@@ -68,5 +65,18 @@ class RecommendationRestController(
     fun cancelRecommendation(): ResponseEntity<String> {
         JobManager.cancelJob()
         return ResponseEntity.ok("Job cancelled.")
+    }
+
+    companion object {
+        const val RECOMMENDATION = """
+        {
+            "dual_emergent": {
+                "flying": ["card_1"],
+                "draw a card": ["card_2", "card_3"]
+            },
+            "primary_emergent": {
+                "flying": ["card_1"]
+            }
+        """
     }
 }

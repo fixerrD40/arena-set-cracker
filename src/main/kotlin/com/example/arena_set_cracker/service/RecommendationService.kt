@@ -1,6 +1,5 @@
 package com.example.arena_set_cracker.service
 
-import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.*
 import org.springframework.stereotype.Service
@@ -15,7 +14,7 @@ class RecommendationService(
     private val objectMapper: ObjectMapper
 ) {
 
-    suspend fun scoreCardsWithPython(deckId: Int): List<String> = coroutineScope {
+    suspend fun scoreCardsWithPython(deckId: Int): String = coroutineScope {
         val deck = deckService.getDeckWithColors(deckId)
         val primary = deck.primaryColor
         val secondary = deck.colors.firstOrNull { it != primary }
@@ -73,7 +72,7 @@ class RecommendationService(
             // Make sure stderr is fully consumed before proceeding
             stderrJob.join()
 
-            objectMapper.readValue(output, object : TypeReference<List<String>>() {})
+            output
         } catch (e: Exception) {
             process.destroyForcibly()
             throw e

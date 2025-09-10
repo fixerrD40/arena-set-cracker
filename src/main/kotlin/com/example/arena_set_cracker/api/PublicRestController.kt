@@ -1,5 +1,6 @@
 package com.example.arena_set_cracker.api
 
+import com.example.arena_set_cracker.api.RecommendationRestController.Companion.RECOMMENDATION
 import com.example.arena_set_cracker.api.model.Deck
 import com.example.arena_set_cracker.api.model.MtgSet
 import com.example.arena_set_cracker.service.DeckService
@@ -9,7 +10,6 @@ import com.example.arena_set_cracker.service.UserService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.enums.ParameterIn
-import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
@@ -104,9 +104,7 @@ class PublicRestController(
                 content = [
                     Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
-                        array = ArraySchema(
-                            schema = Schema(implementation = String::class)
-                        )
+                        examples = [ExampleObject(RECOMMENDATION)]
                     )
                 ]
             ),
@@ -124,7 +122,7 @@ class PublicRestController(
         ]
     )
     @PostMapping(path = ["/recommend/deck/{id}"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun recommendPublicDeck(@PathVariable("id") id: Int): ResponseEntity<List<String>> {
+    fun recommendPublicDeck(@PathVariable("id") id: Int): ResponseEntity<String> {
         userService.getHankId()?.let { hank ->
             val deckSet = deckService.getDeckSet(id)
             if (setService.getSets(hank).any { it.id == deckSet }) {
