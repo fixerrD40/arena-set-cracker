@@ -57,9 +57,23 @@ class DeckService(
         }
     }
 
-    // TODO
     private fun parseDeck(raw: String): Map<String, Int> {
-        return emptyMap()
+        val result = mutableMapOf<String, Int>()
+        val regex = Regex("""^(\d+)\s+(.+?)\s+\([^)]+\)\s+\d+$""")
+
+        raw.lines().forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.isNotEmpty()) {
+                val match = regex.matchEntire(trimmed)
+                if (match != null) {
+                    val (countStr, cardName) = match.destructured
+                    val count = countStr.toInt()
+                    result[cardName] = result.getOrDefault(cardName, 0) + count
+                }
+            }
+        }
+
+        return result
     }
 
     fun getDeckWithColors(deckId: Int): DeckEntity {
