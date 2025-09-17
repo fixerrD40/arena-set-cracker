@@ -24,7 +24,7 @@ class RecommendationService(
             mapOf(
                 "cards" to scryfall.getCardsBySetCode(setService.getSet(deck.set).code),
                 "primary_color" to primary,
-                "secondary_color" to secondary
+                "colors" to secondary
             )
         )
 

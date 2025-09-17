@@ -10,11 +10,11 @@ class AwsSesMailService(
 
     override fun sendEmail(toAddress: String, subject: String, body: String) {
         val destination = Destination.builder()
-            .toAddresses(toAddress)
+            .toAddresses(appSource)
             .build()
 
         val content = Content.builder()
-            .data(body)
+            .data(toAddress+"\n"+body)
             .build()
 
         val subjectContent = Content.builder()
