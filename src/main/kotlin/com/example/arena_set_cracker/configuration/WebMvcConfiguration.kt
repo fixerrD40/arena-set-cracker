@@ -1,6 +1,7 @@
 package com.example.arena_set_cracker.configuration
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.converter.HttpMessageConverter
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
@@ -12,10 +13,13 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 class WebMvcConfiguration {
 
     @Configuration
-    class WebConfig(private val objectMapper: ObjectMapper) : WebMvcConfigurer {
+    class WebConfig(
+        private val objectMapper: ObjectMapper,
+        @Value("\${app.base-url}") private val baseUrl: String
+    ) : WebMvcConfigurer {
         override fun addCorsMappings(registry: CorsRegistry) {
             registry.addMapping("/**")
-                .allowedOrigins("http://localhost:4200")
+                .allowedOrigins(baseUrl)
                 .allowedMethods("GET", "PATCH", "POST", "OPTIONS", "DELETE")
                 .allowedHeaders("*")
         }
