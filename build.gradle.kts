@@ -72,3 +72,12 @@ dockerCompose {
 }
 
 dockerCompose.isRequiredBy(tasks.test)
+
+tasks.register<Copy>("copyPythonScripts") {
+    from("$rootDir/python")
+    into("$buildDir/docker/python")
+}
+
+tasks.named("dockerBuildImage") {
+    dependsOn("copyPythonScripts")
+}
