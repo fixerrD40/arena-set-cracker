@@ -17,14 +17,12 @@ class RecommendationService(
     suspend fun scoreCardsWithPython(deckId: Int): String = coroutineScope {
         val deck = deckService.getDeckWithColors(deckId)
         val primary = deck.primaryColor
-        val secondary = deck.colors.firstOrNull { it != primary }
-            ?: throw IllegalArgumentException("Expected dual-color deck. Found: ${deck.colors}")
 
         val payload = objectMapper.writeValueAsString(
             mapOf(
                 "cards" to scryfall.getCardsBySetCode(setService.getSet(deck.set).code),
                 "primary_color" to primary,
-                "colors" to secondary
+                "colors" to deck.colors
             )
         )
 
@@ -55,7 +53,7 @@ class RecommendationService(
             }
 
             // Read stdout with timeout
-            val output = withTimeout(30_000) {
+            val output = withTimeout(10_000) {
                 process.inputStream.bufferedReader().readText()
             }
 
