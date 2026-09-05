@@ -7,8 +7,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { switchMap } from 'rxjs/operators';
 import { UserProfileService } from '../../../core/services/user-profile.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { SetService } from '../../../core/services/set.service';
 
 @Component({
   selector: 'app-login',
@@ -28,6 +30,7 @@ import { AuthService } from '../../../core/services/auth.service';
 export class LoginComponent {
   private readonly userProfileService = inject(UserProfileService);
   private readonly authService = inject(AuthService);
+  private readonly setService = inject(SetService);
   private readonly router = inject(Router);
 
   public readonly form = new FormGroup({
@@ -51,7 +54,9 @@ export class LoginComponent {
         this.userProfileService.restoreCloudIdentity({
           token: response.token,
           name: response.displayName
-        }).subscribe({
+        }).pipe(
+          switchMap(() => this.setService.hydrateFromCloudOnce())
+        ).subscribe({
           next: () => {
             this.isLoading = false;
             this.router.navigate(['/library']);

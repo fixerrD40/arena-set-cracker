@@ -11,6 +11,7 @@ import {
   serializePayloadsBulk,
   hydrateRow
 } from '../../sqlite/sqlite.registry';
+import { toOutboxPayload } from './outbox.payload';
 
 @Injectable({
   providedIn: 'root'
@@ -39,7 +40,7 @@ export class CloudDataWire implements DataWire<SQLiteTable<any>> {
             return this.outbox.enqueue({
               entityType,
               action: 'CREATE',
-              payload: domainModel
+              payload: toOutboxPayload(entityType, domainModel)
             }).pipe(map(() => domainModel as unknown as TOutput));
           }
           return of(domainModel as unknown as TOutput);
@@ -74,7 +75,7 @@ export class CloudDataWire implements DataWire<SQLiteTable<any>> {
               concatMap(domainItem => this.outbox.enqueue({
                 entityType,
                 action: 'CREATE',
-                payload: domainItem
+                payload: toOutboxPayload(entityType, domainItem)
               })),
               toArray(),
               map(() => payloads as unknown as TOutput[])
@@ -117,7 +118,7 @@ export class CloudDataWire implements DataWire<SQLiteTable<any>> {
             return this.outbox.enqueue({
               entityType,
               action: 'UPDATE',
-              payload: domainModel
+              payload: toOutboxPayload(entityType, domainModel)
             }).pipe(map(() => domainModel as unknown as TOutput));
           }
           return of(domainModel as unknown as TOutput);

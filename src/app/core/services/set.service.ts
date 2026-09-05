@@ -3,9 +3,9 @@ import { BehaviorSubject, from, Observable, of, Subject, Subscription, throwErro
 import { catchError, concatMap, map, shareReplay, switchMap, takeUntil, tap, toArray } from 'rxjs/operators';
 import { DATA_WIRE_TOKEN } from './data-wire/data-wire.contract';
 
-import { MtgSet } from '../../shared/models/set/set';
+import { CloudSetPayload, MtgSet } from '../../shared/models/set/set';
 import { MtgCard } from '../../shared/models/card/card';
-import { cloneDeck, MtgDeck } from '../../shared/models/deck/deck';
+import { CloudDeckPayload, cloneDeck, MtgDeck } from '../../shared/models/deck/deck';
 import { ScryfallSet } from './api/scryfall/models/set.scryfall';
 import { ScryfallCard } from './api/scryfall/models/card.scryfall';
 
@@ -14,8 +14,9 @@ import { mapScryfallToCard } from '../../shared/models/card/card.mappers';
 import { sets, cards, decks, deckCards, DeckCardRow, DeckRow } from '../sqlite/sqlite.schema';
 import { ScryfallService } from './api/scryfall/scryfall.service';
 import { FileSystemService } from './file-system.service';
-import { mapScryfallToDomainSet } from '../../shared/models/set/set.mappers';
-import { mapRowToDeck } from '../../shared/models/deck/deck.mappers';
+import { BackendService } from './backend.service';
+import { mapJsonToSet, mapScryfallToDomainSet } from '../../shared/models/set/set.mappers';
+import { mapJsonToDeck, mapRowToDeck } from '../../shared/models/deck/deck.mappers';
 
 /** Live install progress for the install-set screen (card-count downloading). */
 export interface SetInstallProgress {
@@ -41,6 +42,7 @@ export class SetService implements OnDestroy {
   private readonly dataWire = inject(DATA_WIRE_TOKEN);
   private readonly scryfallService = inject(ScryfallService);
   private readonly fileService = inject(FileSystemService);
+  private readonly backend = inject(BackendService);
 
   private rosterSubscription?: Subscription;
   private workspaceSubscription?: Subscription;
@@ -56,12 +58,57 @@ export class SetService implements OnDestroy {
 
   private readonly installAbortSubject = new Subject<void>();
   private activeInstallSet: MtgSet | null = null;
+  private cloudHydrate$: Observable<void> | null = null;
 
   private readonly activeContextSubject = new BehaviorSubject<WorkspaceState | null>(null);
   public readonly activeContext$: Observable<WorkspaceState | null> = this.activeContextSubject.asObservable();
 
   public get currentWorkspaceSnapshot(): WorkspaceState | null {
     return this.activeContextSubject.getValue();
+  }
+
+  /**
+   * Pulls live JSONB documents after login/restore.
+   * Catalog cards stay local (Scryfall); last-write-wins stays on the server.
+   */
+  public hydrateFromCloud(): Observable<void> {
+    return forkJoin({
+      cloudSets: this.backend.fetchCollectionFromServer<CloudSetPayload>('sets', 'all'),
+      cloudDecks: this.backend.fetchCollectionFromServer<CloudDeckPayload>('decks', 'all')
+    }).pipe(
+      switchMap(({ cloudSets, cloudDecks }) =>
+        from(cloudSets ?? []).pipe(
+          concatMap((payload) => {
+            const domainSet = mapJsonToSet(payload);
+            return this.writeHydratedSet(domainSet).pipe(
+              switchMap(() => this.ensureLocalCatalog(domainSet))
+            );
+          }),
+          toArray(),
+          switchMap(() =>
+            from(cloudDecks ?? []).pipe(
+              concatMap((payload) => this.persistHydratedDeck(mapJsonToDeck(payload))),
+              toArray()
+            )
+          )
+        )
+      ),
+      tap(() => this.syncInstalledCache()),
+      map(() => void 0),
+      catchError((err) => {
+        console.error('[SetService] Cloud hydrate failed:', err?.message || err);
+        return of(void 0);
+      })
+    );
+  }
+
+  public hydrateFromCloudOnce(): Observable<void> {
+    if (!this.cloudHydrate$) {
+      this.cloudHydrate$ = this.hydrateFromCloud().pipe(
+        shareReplay({ bufferSize: 1, refCount: false })
+      );
+    }
+    return this.cloudHydrate$;
   }
 
   /** Rehydrates the installed-sets list from SQLite after boot. */
@@ -172,6 +219,64 @@ export class SetService implements OnDestroy {
           }))
         );
       })
+    );
+  }
+
+  private ensureLocalCatalog(set: MtgSet): Observable<void> {
+    return this.dataWire.fetchCollection<MtgCard>(cards, set.id).pipe(
+      switchMap((existing) => {
+        if (existing.length > 0) return of(void 0);
+
+        return this.scryfallService.getCardsBySet(set.code.toLowerCase()).pipe(
+          map((apiCards) =>
+            apiCards
+              .filter((card) => card.arena_id != null && card.collector_number)
+              .map((card) => mapScryfallToCard(card, set.id, '', ''))
+          ),
+          switchMap((domainCards) =>
+            domainCards.length === 0
+              ? of([])
+              : this.dataWire.insertBulk(cards, domainCards)
+          ),
+          map(() => void 0)
+        );
+      }),
+      catchError((err) => {
+        console.error(`[SetService] Catalog fill failed for ${set.code}:`, err?.message || err);
+        return of(void 0);
+      })
+    );
+  }
+
+  private writeHydratedSet(set: MtgSet): Observable<MtgSet> {
+    return this.dataWire.fetchRecord<MtgSet>(sets, set.id).pipe(
+      switchMap((existing) =>
+        existing ? this.dataWire.update(sets, set) : this.dataWire.insert(sets, set)
+      )
+    );
+  }
+
+  private persistHydratedDeck(deck: MtgDeck): Observable<MtgDeck> {
+    return this.dataWire.fetchRecord<MtgDeck>(decks, deck.id).pipe(
+      switchMap((existing) =>
+        existing ? this.dataWire.update(decks, deck) : this.dataWire.insert(decks, deck)
+      ),
+      switchMap(() => this.dataWire.deleteWhere(deckCards, 'deckId', deck.id)),
+      switchMap(() => {
+        const lines = Array.from(deck.cards.entries()).map(([cardId, quantity]) => ({
+          deckId: deck.id,
+          cardId,
+          quantity
+        }));
+        if (lines.length === 0) return of([]);
+        return this.dataWire.insertBulk(deckCards, lines).pipe(
+          catchError((err) => {
+            console.error(`[SetService] Hydrated deck lines failed for ${deck.id}:`, err?.message || err);
+            return of([]);
+          })
+        );
+      }),
+      map(() => deck)
     );
   }
 
