@@ -38,18 +38,38 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 const DIST_ROOT = path.join(__dirname, 'dist', 'arena-set-cracker', 'browser');
 const APP_ORIGIN = 'app://localhost';
 
+function packagedBaseUrl() {
+  try {
+    const raw = fs.readFileSync(path.join(DIST_ROOT, 'assets', 'config.json'), 'utf8');
+    const base = JSON.parse(raw).baseUrl || '';
+    return String(base).replace(/\/$/, '');
+  } catch {
+    return 'http://localhost:8080';
+  }
+}
+
 // 'unsafe-inline' styles: Angular/Material. wasm-unsafe-eval: concentration worker / leftover sql.js assets.
-const APP_CSP = [
-  "default-src 'none'",
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' https://svgs.scryfall.io https://cards.scryfall.io",
-  "connect-src 'self' https://api.scryfall.com http://localhost:8080",
-  "worker-src 'self' blob:",
-  "base-uri 'self'",
-  "form-action 'none'"
-].join('; ');
+// connect/img include packaged baseUrl so release builds can reach the stack EIP (plus localhost for dev).
+function appCsp() {
+  const api = packagedBaseUrl();
+  const connect = ["'self'", 'https://api.scryfall.com', 'http://localhost:8080'];
+  const img = ["'self'", 'https://svgs.scryfall.io', 'https://cards.scryfall.io'];
+  if (api && !connect.includes(api)) {
+    connect.push(api);
+    img.push(api);
+  }
+  return [
+    "default-src 'none'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    `img-src ${img.join(' ')}`,
+    `connect-src ${connect.join(' ')}`,
+    "worker-src 'self' blob:",
+    "base-uri 'self'",
+    "form-action 'none'"
+  ].join('; ');
+}
 
 function requireVaultDb() {
   if (!vaultDb) {
@@ -78,7 +98,7 @@ async function fetchLocalFile(filePath, { html } = {}) {
   page = page.replace('<base href="./">', '<base href="/">');
   const headers = new Headers(response.headers);
   headers.set('Content-Type', 'text/html; charset=utf-8');
-  headers.set('Content-Security-Policy', APP_CSP);
+  headers.set('Content-Security-Policy', appCsp());
   return new Response(page, {
     status: response.status,
     statusText: response.statusText,

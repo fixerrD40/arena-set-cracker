@@ -1,10 +1,15 @@
-# Stage 1: Build Angular app
-FROM node:24-alpine AS builder
+# Stage 1: Build Angular app (browser bundle only; no Electron/SQLite native bits needed at runtime)
+FROM node:24-bookworm-slim AS builder
 WORKDIR /app
 
-# Copy only the files needed for install & build
+# better-sqlite3 still installs with the lockfile; give node-gyp a normal Debian toolchain.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
-RUN npm install
+# Web image does not need native rebuilds; ignore-scripts skips better-sqlite3 compile.
+RUN npm install --ignore-scripts
 
 COPY . .
 RUN npx ng build --configuration production --verbose

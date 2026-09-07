@@ -14,7 +14,9 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "desktop:run": "ng build && electron . --js-flags=\"--max-old-space-size=4096\" --no-sandbox",
-    "desktop:package": "ng build && npx electron-builder",
+    "desktop:package": "node scripts/desktop-package.mjs",
+    "desktop:package:win": "node scripts/desktop-package.mjs --win",
+    "desktop:package:linux": "node scripts/desktop-package.mjs --linux",
     "mobile:build-android": "ng build && npx cap sync android && npx cap open android",
     "mobile:build-ios": "ng build && npx cap sync ios && npx cap open ios",
     "db:generate": "drizzle-kit generate --dialect=sqlite --schema=src/app/core/sqlite/sqlite.schema.ts --out=public/drizzle"
@@ -37,6 +39,11 @@
       "target": [
         "AppImage",
         "deb"
+      ]
+    },
+    "win": {
+      "target": [
+        "portable"
       ]
     }
   },
