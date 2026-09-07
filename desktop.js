@@ -2,6 +2,7 @@ const { app, BrowserWindow, session, protocol, net, ipcMain } = require('electro
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const Database = require('better-sqlite3');
 
 // Main process. Angular is a guest page; this file is the host.
 //
@@ -10,10 +11,14 @@ const { pathToFileURL } = require('url');
 //    and why <img src="/cached_art/..."> is same-origin instead of file://.
 // 2. Files — protocol.handle is the "server" for that origin: dist/ is the app,
 //    cached_art/ is the catalog. Chromium asks us for each URL; we return a file.
-// 3. Disk — sqlite and art writes stay here. preload.js is a narrow doorbell
-//    (IPC). Path checks exist because the renderer is untrusted once Node is gone.
+// 3. Disk — vault (better-sqlite3) and art writes stay here. preload.js is a
+//    narrow doorbell (IPC). Path checks exist because the renderer is untrusted
+//    once Node is gone.
 //
 // registerSchemesAsPrivileged must run before app ready.
+
+/** @type {import('better-sqlite3').Database | null} */
+let vaultDb = null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -33,7 +38,7 @@ app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
 const DIST_ROOT = path.join(__dirname, 'dist', 'arena-set-cracker', 'browser');
 const APP_ORIGIN = 'app://localhost';
 
-// 'unsafe-inline' styles: Angular/Material. wasm-unsafe-eval: sql.js.
+// 'unsafe-inline' styles: Angular/Material. wasm-unsafe-eval: concentration worker / leftover sql.js assets.
 const APP_CSP = [
   "default-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -45,6 +50,24 @@ const APP_CSP = [
   "base-uri 'self'",
   "form-action 'none'"
 ].join('; ');
+
+function requireVaultDb() {
+  if (!vaultDb) {
+    throw new Error('[desktop] Vault database is not open.');
+  }
+  return vaultDb;
+}
+
+function syncReturn(event, fn) {
+  try {
+    event.returnValue = { ok: true, value: fn() };
+  } catch (err) {
+    event.returnValue = {
+      ok: false,
+      error: err && err.message ? String(err.message) : String(err)
+    };
+  }
+}
 
 async function fetchLocalFile(filePath, { html } = {}) {
   const response = await net.fetch(pathToFileURL(filePath).href);
@@ -157,6 +180,69 @@ function registerIpc() {
   });
 
   ipcMain.handle('desktop:drizzleBootstrapSql', () => readDrizzleBootstrapSql());
+
+  ipcMain.handle('desktop:vaultOpen', (_event, fileName) => {
+    const abs = assertSqliteFileName(fileName);
+    const isNew = !fs.existsSync(abs);
+    if (vaultDb) {
+      try {
+        vaultDb.close();
+      } catch {
+        /* ignore */
+      }
+      vaultDb = null;
+    }
+    vaultDb = new Database(abs);
+    vaultDb.pragma('foreign_keys = ON');
+    return { isNew };
+  });
+
+  ipcMain.on('desktop:vaultExecSync', (event, sql) => {
+    syncReturn(event, () => {
+      requireVaultDb().exec(String(sql || ''));
+      return null;
+    });
+  });
+
+  ipcMain.on('desktop:vaultRunSync', (event, sql, params) => {
+    syncReturn(event, () => {
+      const db = requireVaultDb();
+      const binds = Array.isArray(params) ? params : [];
+      db.prepare(String(sql || '')).run(...binds);
+      return null;
+    });
+  });
+
+  ipcMain.on('desktop:vaultRunBatchSync', (event, statements) => {
+    syncReturn(event, () => {
+      const db = requireVaultDb();
+      const list = Array.isArray(statements) ? statements : [];
+      const runBatch = db.transaction((batch) => {
+        for (const item of batch) {
+          const binds = Array.isArray(item?.params) ? item.params : [];
+          db.prepare(String(item?.sql || '')).run(...binds);
+        }
+      });
+      runBatch(list);
+      return null;
+    });
+  });
+
+  ipcMain.on('desktop:vaultAllSync', (event, sql, params) => {
+    syncReturn(event, () => {
+      const db = requireVaultDb();
+      const binds = Array.isArray(params) ? params : [];
+      return db.prepare(String(sql || '')).all(...binds);
+    });
+  });
+
+  ipcMain.on('desktop:vaultGetSync', (event, sql, params) => {
+    syncReturn(event, () => {
+      const db = requireVaultDb();
+      const binds = Array.isArray(params) ? params : [];
+      return db.prepare(String(sql || '')).get(...binds) ?? null;
+    });
+  });
 }
 
 async function handleAppRequest(request) {

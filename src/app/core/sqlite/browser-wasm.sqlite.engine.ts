@@ -1,12 +1,22 @@
 import { Injectable, Injector, runInInjectionContext, inject } from '@angular/core';
-import { and, eq, inArray } from 'drizzle-orm';
+import { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { drizzle } from 'drizzle-orm/sql-js';
 import initSqlJs from 'sql.js';
 
 import { OutboxEnvelope, VaultEngine, SyncQueueItem } from '../vault/vault.engine';
-import { syncQueue } from './sqlite.schema';
 import * as MySchema from './sqlite.schema';
 import { APP_CONFIG } from '../config/config.model';
+import {
+  sqlJsClearSyncItemsBatch,
+  sqlJsDeleteById,
+  sqlJsDeleteWhere,
+  sqlJsEnqueueSyncItem,
+  sqlJsGetPendingSyncItems,
+  sqlJsInsertRows,
+  sqlJsSelectAll,
+  sqlJsSelectById,
+  sqlJsUpdateRowById
+} from './sqljs-vault-crud';
 
 @Injectable({
   providedIn: 'root'
@@ -66,57 +76,53 @@ export class BrowserWasmVaultEngine extends VaultEngine {
     }
   }
 
+  public insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): void {
+    sqlJsInsertRows(this.requireDb(), table, rows);
+  }
+
+  public updateRowById(
+    table: SQLiteTable<any>,
+    id: string | number,
+    row: Record<string, unknown>
+  ): void {
+    sqlJsUpdateRowById(this.requireDb(), table, id, row);
+  }
+
+  public deleteById(table: SQLiteTable<any>, id: string | number): void {
+    sqlJsDeleteById(this.requireDb(), table, id);
+  }
+
+  public deleteWhere(table: SQLiteTable<any>, columnKey: string, value: string | number): void {
+    sqlJsDeleteWhere(this.requireDb(), table, columnKey, value);
+  }
+
+  public selectById(table: SQLiteTable<any>, id: string | number): Record<string, unknown> | null {
+    return sqlJsSelectById(this.requireDb(), table, id);
+  }
+
+  public selectAll(table: SQLiteTable<any>, contextId?: string | number): Record<string, unknown>[] {
+    return sqlJsSelectAll(this.requireDb(), table, contextId);
+  }
+
   public async getPendingSyncItems(): Promise<SyncQueueItem[]> {
     if (!this.cachedDbInstance) return [];
-    return this.cachedDbInstance.select().from(syncQueue).orderBy(syncQueue.id).all();
+    return sqlJsGetPendingSyncItems(this.cachedDbInstance);
   }
 
   public async clearSyncItemsBatch(ids: number[]): Promise<void> {
     const db = this.cachedDbInstance;
     if (!db || ids.length === 0) return;
-    db.delete(syncQueue).where(inArray(syncQueue.id, ids)).run();
+    sqlJsClearSyncItemsBatch(db, ids);
     await this.flushToIndexedDb();
   }
 
   public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
     const db = this.cachedDbInstance;
     if (!db) return;
-
-    const payloadId = String(item.payload?.id);
-    if (!payloadId) return;
-
-    try {
-      if (item.action === 'DELETE') {
-        db.delete(syncQueue)
-          .where(and(eq(syncQueue.entityType, item.entityType), eq(syncQueue.entityId, payloadId)))
-          .run();
-      }
-
-      db.insert(syncQueue)
-        .values({
-          entityType: item.entityType,
-          entityId: payloadId,
-          action: item.action,
-          payload: item.payload
-        })
-        .onConflictDoUpdate({
-          target: [syncQueue.entityType, syncQueue.entityId],
-          set: {
-            action: item.action,
-            payload: item.payload,
-            createdAt: new Date().toISOString()
-          }
-        })
-        .run();
-
-      await this.flushToIndexedDb();
-    } catch (err) {
-      console.error('[BrowserWasmVaultEngine] Transaction crash:', err);
-      throw err;
-    }
+    await sqlJsEnqueueSyncItem(db, item);
+    await this.flushToIndexedDb();
   }
 
-  /** Alias used by SqliteDataWire.flush() — matches NativeVaultEngine.flush naming. */
   public flush(): void {
     void this.flushToIndexedDb();
   }
@@ -124,6 +130,13 @@ export class BrowserWasmVaultEngine extends VaultEngine {
   public async flushToIndexedDb(): Promise<void> {
     const currentDbKey = this.activeDbKey ?? 'arena_cache_mtg_vault.db';
     await this.commitSnapshotToIndexedDb(currentDbKey);
+  }
+
+  private requireDb(): any {
+    if (!this.cachedDbInstance) {
+      throw new Error('[BrowserWasmVaultEngine] Engine uninitialized.');
+    }
+    return this.cachedDbInstance;
   }
 
   private async commitSnapshotToIndexedDb(targetDbKey: string): Promise<void> {
@@ -170,7 +183,6 @@ export class BrowserWasmVaultEngine extends VaultEngine {
       }
 
       const ddlStatementsScript = await response.text();
-      // sql.js can run multi-statement scripts; strip drizzle breakpoints
       const cleaned = ddlStatementsScript.replace(/-->\s*statement-breakpoint/g, '');
       db.run(cleaned);
       console.log(`[BrowserWasmVaultEngine] Schema initialized via: [${tag}.sql].`);

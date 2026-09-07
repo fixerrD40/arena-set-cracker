@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable, of, throwError, from } from 'rxjs';
 import { concatMap, catchError, map, toArray } from 'rxjs/operators';
 import { SQLiteTable } from 'drizzle-orm/sqlite-core';
-import { eq, getTableName, getTableColumns } from 'drizzle-orm';
+import { getTableName } from 'drizzle-orm';
 import { VAULT_ENGINE_TOKEN } from '../../vault/vault.engine';
 import { SyncService } from '../sync.service';
 import {
@@ -24,13 +24,10 @@ export class VaultStore {
     table: SQLiteTable<any>,
     domainModel: TInput
   ): Observable<TOutput> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
-
     try {
       const tableName = getTableName(table);
       const dbPayload = serializePayload(table, domainModel);
-      db.insert(table).values(dbPayload).run();
+      this.vaultEngine.insertRows(table, [dbPayload]);
 
       return of(void 0).pipe(
         concatMap(() => {
@@ -56,13 +53,11 @@ export class VaultStore {
     table: SQLiteTable<any>,
     payloads: TInput[]
   ): Observable<TOutput[]> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine not bootstrapped.'));
     if (!payloads || payloads.length === 0) return of([]);
 
     try {
       const dbPayloads = serializePayloadsBulk(table, payloads);
-      db.insert(table).values(dbPayloads).run();
+      this.vaultEngine.insertRows(table, dbPayloads);
 
       return of(void 0).pipe(
         concatMap(() => {
@@ -94,19 +89,14 @@ export class VaultStore {
     table: SQLiteTable<any>,
     domainModel: TInput
   ): Observable<TOutput> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
-
     try {
-      const idColumn = (table as any).id;
       const recordId = (domainModel as any)?.id;
-
-      if (!idColumn || !recordId) {
+      if (!recordId) {
         return throwError(() => new Error('[VaultStore] Update aborted: Missing primary identity column key "id".'));
       }
 
       const dbPayload = serializePayload(table, domainModel);
-      db.update(table).set(dbPayload).where(eq(idColumn, recordId)).run();
+      this.vaultEngine.updateRowById(table, recordId, dbPayload);
 
       return of(void 0).pipe(
         concatMap(() => {
@@ -134,16 +124,8 @@ export class VaultStore {
     table: SQLiteTable<any>,
     id: string | number
   ): Observable<void> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine not bootstrapped.'));
-
     try {
-      const idColumn = (table as any).id;
-      if (!idColumn) {
-        return throwError(() => new Error('[VaultStore] Table lacks an "id" tracker token.'));
-      }
-
-      db.delete(table).where(eq(idColumn, id)).run();
+      this.vaultEngine.deleteById(table, id);
 
       return of(void 0).pipe(
         concatMap(() => {
@@ -172,17 +154,8 @@ export class VaultStore {
     columnKey: string,
     value: string | number
   ): Observable<void> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine not bootstrapped.'));
-
     try {
-      const columns = getTableColumns(table);
-      const column = columns[columnKey];
-      if (!column) {
-        return throwError(() => new Error(`[VaultStore] Column "${columnKey}" not found on table.`));
-      }
-
-      db.delete(table).where(eq(column, value)).run();
+      this.vaultEngine.deleteWhere(table, columnKey, value);
       this.flush();
       return of(void 0);
     } catch (err) {
@@ -194,28 +167,12 @@ export class VaultStore {
     table: SQLiteTable<any>,
     id: string | number
   ): Observable<TOutput | null> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
-
     try {
-      const idColumn = (table as any).id;
-      if (!idColumn) {
-        return throwError(() => new Error('[VaultStore] Table lacks an "id" tracking token.'));
-      }
-
-      const untypedRows = db
-        .select()
-        .from(table)
-        .where(eq(idColumn, id))
-        .limit(1)
-        .all() as Record<string, any>[];
-
-      if (untypedRows.length === 0) {
+      const row = this.vaultEngine.selectById(table, id);
+      if (!row) {
         return of(null);
       }
-
-      const hydratedResult = hydrateRow<TOutput>(table, untypedRows[0]);
-      return of(hydratedResult);
+      return of(hydrateRow<TOutput>(table, row));
     } catch (err) {
       console.error(`[VaultStore] fetchRecord failure on key ${id}:`, err);
       return throwError(() => err);
@@ -226,30 +183,15 @@ export class VaultStore {
     table: SQLiteTable<any>,
     contextId?: string | number
   ): Observable<TOutput[]> {
-    const db = (this.vaultEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
-
     try {
-      const columns = getTableColumns(table);
-      const setIdColumn = columns['setId'] || columns['set_id'];
-
-      let queryBuilder = db.select().from(table);
-      if (contextId !== undefined && contextId !== 'all' && setIdColumn) {
-        queryBuilder = queryBuilder.where(eq(setIdColumn, String(contextId))) as any;
-      }
-
-      const untypedRows = queryBuilder.all() as Record<string, any>[];
-      const result = untypedRows.map((row) => hydrateRow<TOutput>(table, row));
-
-      return of(result);
+      const rows = this.vaultEngine.selectAll(table, contextId);
+      return of(rows.map((row) => hydrateRow<TOutput>(table, row)));
     } catch (err) {
       return throwError(() => err);
     }
   }
 
   public flush(): void {
-    if (typeof (this.vaultEngine as any).flush === 'function') {
-      (this.vaultEngine as any).flush();
-    }
+    this.vaultEngine.flush();
   }
 }

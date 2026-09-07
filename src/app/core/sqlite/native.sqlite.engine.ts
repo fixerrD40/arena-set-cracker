@@ -1,164 +1,163 @@
 import { Injectable, Injector, runInInjectionContext, inject } from '@angular/core';
+import { getTableName } from 'drizzle-orm';
+import { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { APP_CONFIG } from '../config/config.model';
-import { syncQueue } from './sqlite.schema';
-import * as MySchema from './sqlite.schema';
-import { and, eq, inArray } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/sql-js';
-import initSqlJs from 'sql.js';
 import { getDesktopBridge } from '../platform/desktop-bridge';
 import { OutboxEnvelope, VaultEngine, SyncQueueItem } from '../vault/vault.engine';
+import {
+  buildDeleteByIdSql,
+  buildDeleteWhereSql,
+  buildInsertSql,
+  buildSelectAllSql,
+  buildSelectByIdSql,
+  buildUpdateByIdSql,
+  mapSqlRowToJs
+} from '../vault/vault-table-sql';
+import { syncQueue } from './sqlite.schema';
 
+/**
+ * Electron vault: better-sqlite3 in main via IPC. No sql.js in the renderer.
+ * Existing mtg_vault.db files from the prior sql.js dump path open as normal SQLite.
+ * Row CRUD uses sendSync so VaultStore can stay synchronous.
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class NativeVaultEngine extends VaultEngine {
-  public rawSqliteClient?: any;
-  public cachedDbInstance?: any;
-  public activeFileName?: string;
-  private persistChain: Promise<void> = Promise.resolve();
+  private ready = false;
 
   public override async bootstrap(injector: Injector): Promise<void> {
-    if (this.cachedDbInstance) return;
+    if (this.ready) return;
 
     const runtimeConfig = runInInjectionContext(injector, () => {
       const appConfig = inject(APP_CONFIG);
-      return {
-        sqliteDbName: appConfig.sqliteDbName,
-        baseUrl: appConfig.baseUrl
-      };
+      return { sqliteDbName: appConfig.sqliteDbName };
     });
 
-    this.activeFileName = runtimeConfig.sqliteDbName.replace(/^file:/, '');
-
+    const fileName = runtimeConfig.sqliteDbName.replace(/^file:/, '');
     const desktop = getDesktopBridge();
-    if (!desktop) {
-      throw new Error('[VaultEngine] Desktop bridge unavailable.');
+    if (!desktop?.vaultOpen) {
+      throw new Error('[NativeVaultEngine] Desktop vault bridge unavailable.');
     }
 
     try {
-      const SQL = await initSqlJs({ locateFile: (file: string) => `assets/${file}` });
-      const existing = await desktop.sqliteRead(this.activeFileName);
-
-      if (existing) {
-        this.rawSqliteClient = new SQL.Database(new Uint8Array(existing));
-        this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
-        this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
-
-        console.log(`[VaultEngine] High-speed Drizzle client loaded via desktop bridge: [${this.activeFileName}].`);
-      } else {
-        console.log(`[VaultEngine] Database container file missing. Compiling schema layout...`);
-
-        this.rawSqliteClient = new SQL.Database();
-        this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
-        this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
-
+      const { isNew } = await desktop.vaultOpen(fileName);
+      if (isNew) {
         const ddl = await desktop.drizzleBootstrapSql();
-        this.generateDatabaseSchema(this.rawSqliteClient, ddl);
-        await this.persistToDisk();
+        desktop.vaultExecSync(ddl);
+        console.log('[NativeVaultEngine] Schema initialized via drizzle bootstrap SQL.');
       }
+      this.ready = true;
+      console.log(`[NativeVaultEngine] better-sqlite3 vault open: [${fileName}].`);
     } catch (rootError) {
-      console.error('[VaultEngine] Critical failure during desktop engine initialization pass:', rootError);
+      console.error('[NativeVaultEngine] Critical failure during desktop vault bootstrap:', rootError);
       throw rootError;
     }
   }
 
+  public insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): void {
+    if (!rows.length) return;
+    // decks.created_at is NOT NULL without a SQL DEFAULT; drizzle $default only runs in-process.
+    const statements = rows.map((row) =>
+      buildInsertSql(table, this.withInsertDefaults(table, row))
+    );
+    this.desktop().vaultRunBatchSync(statements);
+  }
+
+  public updateRowById(
+    table: SQLiteTable<any>,
+    id: string | number,
+    row: Record<string, unknown>
+  ): void {
+    const statement = buildUpdateByIdSql(table, id, row);
+    this.desktop().vaultRunSync(statement.sql, statement.params);
+  }
+
+  public deleteById(table: SQLiteTable<any>, id: string | number): void {
+    const statement = buildDeleteByIdSql(table, id);
+    this.desktop().vaultRunSync(statement.sql, statement.params);
+  }
+
+  public deleteWhere(table: SQLiteTable<any>, columnKey: string, value: string | number): void {
+    const statement = buildDeleteWhereSql(table, columnKey, value);
+    this.desktop().vaultRunSync(statement.sql, statement.params);
+  }
+
+  public selectById(table: SQLiteTable<any>, id: string | number): Record<string, unknown> | null {
+    const statement = buildSelectByIdSql(table, id);
+    const raw = this.desktop().vaultGetSync(statement.sql, statement.params);
+    return raw ? mapSqlRowToJs(table, raw) : null;
+  }
+
+  public selectAll(table: SQLiteTable<any>, contextId?: string | number): Record<string, unknown>[] {
+    const statement = buildSelectAllSql(table, contextId);
+    const rows = this.desktop().vaultAllSync(statement.sql, statement.params);
+    return rows.map((row) => mapSqlRowToJs(table, row));
+  }
+
   public async getPendingSyncItems(): Promise<SyncQueueItem[]> {
-    const db = this.cachedDbInstance;
-    if (!db) {
-      console.warn('[VaultEngine] Sync lookup aborted: Database uninitialized.');
-      return [];
-    }
-    try {
-      return db.select().from(syncQueue).orderBy(syncQueue.id).all() as SyncQueueItem[];
-    } catch (error) {
-      console.error('[VaultEngine] Failed to read pending outbox logs:', error);
-      return [];
-    }
+    const rows = this.desktop().vaultAllSync(
+      'SELECT * FROM sync_queue ORDER BY id ASC',
+      []
+    );
+    return rows.map((row) => mapSqlRowToJs(syncQueue, row) as unknown as SyncQueueItem);
   }
 
   public async clearSyncItemsBatch(ids: number[]): Promise<void> {
-    const db = this.cachedDbInstance;
-    if (!db || ids.length === 0) return;
-    try {
-      db.delete(syncQueue)
-        .where(inArray(syncQueue.id, ids))
-        .run();
-
-      this.flush();
-    } catch (error) {
-      console.error('[VaultEngine] Failed to execute atomic batch purge on disk:', error);
-      throw error;
-    }
-  }
-
-  public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
-    const db = this.cachedDbInstance;
-    if (!db) {
-      console.warn('[VaultEngine] SQLite database instance uninitialized.');
-      return;
-    }
-
-    const payloadId = String(item.payload?.id);
-    if (!payloadId) {
-      console.error('[VaultEngine] Enqueue aborted: Payload lacks unique ID.');
-      return;
-    }
-
-    try {
-      if (item.action === 'DELETE') {
-        db.delete(syncQueue)
-          .where(and(eq(syncQueue.entityType, item.entityType), eq(syncQueue.entityId, payloadId)))
-          .run();
-      }
-
-      db.insert(syncQueue)
-        .values({
-          entityType: item.entityType,
-          entityId: payloadId,
-          action: item.action,
-          payload: item.payload
-        })
-        .onConflictDoUpdate({
-          target: [syncQueue.entityType, syncQueue.entityId],
-          set: {
-            action: item.action,
-            payload: item.payload,
-            createdAt: new Date().toISOString()
-          }
-        })
-        .run();
-
-      this.flush();
-    } catch (err) {
-      console.error('[VaultEngine] Database upsert failure:', err);
-      throw err;
-    }
-  }
-
-  public flush(): void {
-    this.persistChain = this.persistChain.then(
-      () => this.persistToDisk(),
-      () => this.persistToDisk()
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => '?').join(', ');
+    this.desktop().vaultRunSync(
+      `DELETE FROM sync_queue WHERE id IN (${placeholders})`,
+      ids
     );
   }
 
-  private async persistToDisk(): Promise<void> {
-    const rawDb = this.rawSqliteClient;
-    const fileName = this.activeFileName;
-    const desktop = getDesktopBridge();
-    if (!rawDb || !fileName || !desktop) return;
-
-    try {
-      const data = new Uint8Array(rawDb.export());
-      await desktop.sqliteWrite(fileName, data);
-      console.log(`[VaultEngine] Memory cache state successfully persisted to disk: [${fileName}].`);
-    } catch (error) {
-      console.error('[VaultEngine] Critical failure writing binary block to disk:', error);
+  public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
+    const payloadId = String(item.payload?.id);
+    if (!payloadId) {
+      console.error('[NativeVaultEngine] Enqueue aborted: Payload lacks unique ID.');
+      return;
     }
+
+    const desktop = this.desktop();
+    if (item.action === 'DELETE') {
+      desktop.vaultRunSync(
+        'DELETE FROM sync_queue WHERE entity_type = ? AND entity_id = ?',
+        [item.entityType, payloadId]
+      );
+    }
+
+    const createdAt = new Date().toISOString();
+    const payloadJson = JSON.stringify(item.payload);
+    desktop.vaultRunSync(
+      `INSERT INTO sync_queue (entity_type, entity_id, action, payload, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+         action = excluded.action,
+         payload = excluded.payload,
+         created_at = excluded.created_at`,
+      [item.entityType, payloadId, item.action, payloadJson, createdAt]
+    );
   }
 
-  private generateDatabaseSchema(db: any, ddlStatementsScript: string): void {
-    db.run(ddlStatementsScript);
-    console.log('[VaultEngine] Database schema successfully initialized via drizzle bootstrap SQL.');
+  /** better-sqlite3 commits to the file; no blob export. */
+  public flush(): void {}
+
+  private withInsertDefaults(
+    table: SQLiteTable<any>,
+    row: Record<string, unknown>
+  ): Record<string, unknown> {
+    if (getTableName(table) === 'decks' && row['createdAt'] === undefined) {
+      return { ...row, createdAt: new Date().toISOString() };
+    }
+    return row;
+  }
+
+  private desktop() {
+    const bridge = getDesktopBridge();
+    if (!bridge?.vaultOpen || !bridge.vaultRunSync) {
+      throw new Error('[NativeVaultEngine] Desktop vault bridge unavailable.');
+    }
+    return bridge;
   }
 }
