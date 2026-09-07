@@ -35,22 +35,32 @@
             [attr.data-deck-id]="deck.id"
             [class.theme-drop-hot]="themeDropDeckId() === deck.id"
           >
-            <button type="button" class="deck-open-link" cdkDragHandle (click)="openDeck(deck.id)">
+            <div class="deck-open-link" cdkDragHandle>
               <div class="deck-open-head">
-                <span class="deck-name">{{ deck.name }}</span>
-                @let landColors = deckLandColors(deck);
-                @if (landColors.length > 0) {
-                  <span class="deck-color-pips" aria-label="Deck colors from lands">
-                    @for (color of landColors; track color) {
-                      @if (manaPipAsset(color); as pipSrc) {
-                        <img [src]="pipSrc" [alt]="colorLabel(color)" />
+                <button
+                  type="button"
+                  class="deck-delete-x"
+                  [attr.aria-label]="'Delete ' + deck.name"
+                  (click)="deleteDeck(deck, $event)"
+                >×</button>
+                <button type="button" class="deck-open-main" (click)="openDeck(deck.id)">
+                  <span class="deck-name">{{ deck.name }}</span>
+                  @let landColors = deckLandColors(deck);
+                  @if (landColors.length > 0) {
+                    <span class="deck-color-pips" aria-label="Deck colors from lands">
+                      @for (color of landColors; track color) {
+                        @if (manaPipAsset(color); as pipSrc) {
+                          <img [src]="pipSrc" [alt]="colorLabel(color)" />
+                        }
                       }
-                    }
-                  </span>
-                }
+                    </span>
+                  }
+                </button>
               </div>
-              <span class="deck-meta">{{ deckCardCount(deck) }} cards</span>
-            </button>
+              <button type="button" class="deck-meta" (click)="openDeck(deck.id)">
+                {{ deckCardCount(deck) }} cards
+              </button>
+            </div>
             @if (deck.themes.length > 0) {
               <div class="deck-themes">
                 @for (theme of deck.themes; track theme) {

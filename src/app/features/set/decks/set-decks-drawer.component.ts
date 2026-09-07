@@ -143,6 +143,17 @@ export class SetDecksDrawerComponent implements OnDestroy {
     this.router.navigate(['/set', setId, 'deck', deckId]);
   }
 
+  public deleteDeck(deck: MtgDeck, event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!confirm(`Delete deck "${deck.name}"? This cannot be undone.`)) {
+      return;
+    }
+    this.deckService.deleteDeck(deck.id).pipe(takeUntil(this.destroy$)).subscribe({
+      error: () => alert('Could not delete this deck. Please try again.')
+    });
+  }
+
   public onDeckStatusDrop(event: CdkDragDrop<DeckStatus>, targetStatus: DeckStatus): void {
     const deck = event.item.data;
     if (!isDeckDragData(deck) || deck.status === targetStatus) {

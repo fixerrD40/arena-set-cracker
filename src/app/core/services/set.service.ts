@@ -213,7 +213,7 @@ export class SetService implements OnDestroy {
     return this.loadSetWorkspace(setId);
   }
 
-  /** Loads set + cards + decks into the active workspace; falls back to Scryfall if cards are missing. */
+  /** Loads set + cards + decks into the active workspace; backfills missing card art on open. */
   public loadSetWorkspace(setId: string): Observable<WorkspaceState | null> {
     if (this.inFlightSetId === setId && this.inFlightLoad$) {
       return this.inFlightLoad$;
@@ -284,9 +284,18 @@ export class SetService implements OnDestroy {
 
         const cardSource$ =
           cardModels.length > 0
-            ? of(cardModels)
+            ? this.ensureCardAssets(setInfo, cardModels)
             : this.scryfallService.getCardsBySet(setInfo.code.toLowerCase()).pipe(
-                map((apiCards) => apiCards.map((apiCard) => mapScryfallToCard(apiCard, setId, '')))
+                map((apiCards) =>
+                  apiCards.map((apiCard) =>
+                    mapScryfallToCard(
+                      apiCard,
+                      setId,
+                      apiCard.normalArtworkUrl || '',
+                      apiCard.illustrationArtworkUrl || ''
+                    )
+                  )
+                )
               );
 
         return cardSource$.pipe(
@@ -297,6 +306,70 @@ export class SetService implements OnDestroy {
             loadedAt: new Date().toISOString()
           }))
         );
+      })
+    );
+  }
+
+  /**
+   * After cloud hydrate (or a wiped vault), card rows exist without art URIs.
+   * Re-resolve assets the same way install does when the set is opened.
+   */
+  private ensureCardAssets(setInfo: MtgSet, catalog: MtgCard[]): Observable<MtgCard[]> {
+    if (catalog.length === 0 || catalog.every((card) => !!card.localArtUri)) {
+      return of(catalog);
+    }
+
+    const cleanCode = setInfo.code.toLowerCase();
+    return this.scryfallService.getCardsBySet(cleanCode).pipe(
+      switchMap((apiCards) => {
+        const byId = new Map(apiCards.map((apiCard) => [apiCard.id, apiCard]));
+        return from(catalog).pipe(
+          concatMap((card) => {
+            if (card.localArtUri) {
+              return of(card);
+            }
+            const apiCard = byId.get(card.scryfallId) || byId.get(card.id);
+            const arenaId = apiCard?.arena_id ?? card.arenaId;
+            if (!apiCard || !arenaId) {
+              return of(card);
+            }
+
+            return forkJoin({
+              frame: this.downloadCardAsset(
+                apiCard.normalArtworkUrl,
+                this.getCardArtPath(cleanCode, arenaId)
+              ),
+              crop: this.downloadCardAsset(
+                apiCard.illustrationArtworkUrl,
+                this.getCardIllustrationPath(cleanCode, arenaId)
+              )
+            }).pipe(
+              switchMap(({ frame, crop }) => {
+                const updated: MtgCard = {
+                  ...card,
+                  localArtUri: frame,
+                  localIllustrationUri: crop
+                };
+                return this.vault.update(cards, updated).pipe(map(() => updated));
+              }),
+              catchError((err) => {
+                console.error(
+                  `[SetService] Asset backfill failed for ${card.name}:`,
+                  err?.message || err
+                );
+                return of(card);
+              })
+            );
+          }),
+          toArray()
+        );
+      }),
+      catchError((err) => {
+        console.error(
+          `[SetService] Asset backfill aborted for set ${setInfo.code}:`,
+          err?.message || err
+        );
+        return of(catalog);
       })
     );
   }
@@ -596,6 +669,17 @@ export class SetService implements OnDestroy {
   public updateDeckInWorkspaceMemory(updatedDeck: MtgDeck): void {
     this.upsertDeckInWorkspaceMemory(updatedDeck);
     console.log(`[SetService] Workspace memory cache updated locally for deck: ${updatedDeck.name}`);
+  }
+
+  /** Drops a deck from the live workspace cache after delete. */
+  public removeDeckFromWorkspaceMemory(deckId: string): void {
+    const current = this.currentWorkspaceSnapshot;
+    if (!current) return;
+
+    this.activeContextSubject.next({
+      ...current,
+      decks: current.decks.filter((deck) => String(deck.id) !== String(deckId))
+    });
   }
 
   /** Persists active set metadata to SQLite. */

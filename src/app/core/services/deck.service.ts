@@ -287,6 +287,26 @@ export class DeckService {
     );
   }
 
+  /** Purges deck_cards + decks row (enqueues cloud DELETE) and clears local focus. */
+  public deleteDeck(deckId: string): Observable<void> {
+    const id = String(deckId);
+
+    return this.vault.deleteWhere(deckCards, 'deckId', id).pipe(
+      switchMap(() => this.vault.delete(decks, id)),
+      tap(() => {
+        this.setService.removeDeckFromWorkspaceMemory(id);
+        if (this.activeDeckSnapshot && String(this.activeDeckSnapshot.id) === id) {
+          this.clearActiveDeck();
+        }
+      }),
+      map(() => void 0),
+      catchError((err) => {
+        console.error(`[DeckService] Delete failed for deck ${id}:`, err);
+        return throwError(() => err);
+      })
+    );
+  }
+
   /**
    * Writes decks row + replaces deck_cards for that deck id.
    */
