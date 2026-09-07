@@ -3,20 +3,20 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  effect,
   ElementRef,
   HostBinding,
   inject,
   input,
   NgZone,
   OnDestroy,
-  OnInit,
   output,
   ViewChild
 } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { BehaviorSubject, combineLatest, map, Subject } from 'rxjs';
-import { shareReplay, takeUntil } from 'rxjs/operators';
+import { BehaviorSubject, combineLatest, map } from 'rxjs';
+import { shareReplay } from 'rxjs/operators';
 
 import { MtgCard } from '../../../shared/models/card/card';
 import { cardArtUri } from '../../../shared/models/card/card.art';
@@ -43,11 +43,10 @@ import {
   styleUrls: ['./set-theme-preview.css'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SetThemePreviewComponent implements OnInit, AfterViewInit, OnDestroy {
+export class SetThemePreviewComponent implements AfterViewInit, OnDestroy {
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly ngZone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly destroy$ = new Subject<void>();
 
   public readonly pool = input.required<readonly MtgCard[]>();
   public readonly selectedTheme = input<string | null>(null);
@@ -73,9 +72,12 @@ export class SetThemePreviewComponent implements OnInit, AfterViewInit, OnDestro
   private previewWheelGate = false;
   private themePreviewStageEl?: HTMLElement;
 
+  private readonly pool$ = toObservable(this.pool);
+  private readonly selectedTheme$ = toObservable(this.selectedTheme);
+
   private readonly themePreview$ = combineLatest({
-    pool: toObservable(this.pool),
-    theme: toObservable(this.selectedTheme)
+    pool: this.pool$,
+    theme: this.selectedTheme$
   }).pipe(map(({ pool, theme }) => buildThemePreviewState(pool, theme)));
 
   public readonly pageView$ = combineLatest({
@@ -91,6 +93,13 @@ export class SetThemePreviewComponent implements OnInit, AfterViewInit, OnDestro
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
+  /** Field initializer: toObservable/effect need an injection context (not ngOnInit). */
+  private readonly resetPageOnThemeChange = effect(() => {
+    this.selectedTheme();
+    this.themePreviewPage$.next(0);
+    this.clearCardPreview();
+  });
+
   @ViewChild('themePreviewStage')
   set themePreviewStageRef(ref: ElementRef<HTMLElement> | undefined) {
     this.unbindThemePreviewLayout();
@@ -100,15 +109,6 @@ export class SetThemePreviewComponent implements OnInit, AfterViewInit, OnDestro
     }
   }
 
-  public ngOnInit(): void {
-    toObservable(this.selectedTheme)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(() => {
-        this.themePreviewPage$.next(0);
-        this.clearCardPreview();
-      });
-  }
-
   public ngAfterViewInit(): void {
     this.host.nativeElement.addEventListener('wheel', this.onPreviewWheelNative, { passive: false });
   }
@@ -116,8 +116,6 @@ export class SetThemePreviewComponent implements OnInit, AfterViewInit, OnDestro
   public ngOnDestroy(): void {
     this.host.nativeElement.removeEventListener('wheel', this.onPreviewWheelNative);
     this.unbindThemePreviewLayout();
-    this.destroy$.next();
-    this.destroy$.complete();
   }
 
   public recalcLayout(): void {
