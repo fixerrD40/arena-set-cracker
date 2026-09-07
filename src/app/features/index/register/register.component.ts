@@ -52,7 +52,7 @@ export class RegisterComponent implements OnInit {
         this.hasLocalProfile = profile !== null;
         const name = profile?.displayName?.trim();
         // Skip the silent browser placeholder; anything else is a real local label.
-        if (name && name !== 'Local') {
+        if (name && name !== 'Anonymous') {
           this.form.patchValue({ displayName: name });
         }
       }

@@ -33,37 +33,35 @@
   <nav class="chrome-actions">
     <a mat-button routerLink="/about" routerLinkActive="active-link">About</a>
 
-    @if (profile$ | async; as profile) {
-      @if (!profile.isCloudSynced) {
-        <a mat-button routerLink="/register" class="sync-cloud-btn">
-          <mat-icon class="chrome-action-icon">cloud_upload</mat-icon>
-          <span>Sync to Cloud</span>
-        </a>
-      }
-
-      <button mat-icon-button [matMenuTriggerFor]="profileMenu" aria-label="User profile">
-        <mat-icon>account_circle</mat-icon>
-      </button>
-
-      <mat-menu #profileMenu="matMenu">
-        <button mat-menu-item disabled>Hello, {{ profile.displayName || 'Local' }}</button>
+    @if (isDurableClient) {
+      @if (profile$ | async; as profile) {
         @if (!profile.isCloudSynced) {
-          <button mat-menu-item routerLink="/register">Link Cloud Credentials</button>
+          <a mat-button routerLink="/register" class="sync-cloud-btn">
+            <mat-icon class="chrome-action-icon">cloud_upload</mat-icon>
+            <span>Save to Cloud</span>
+          </a>
         }
-        <button mat-menu-item (click)="logout()">Clear Workspace & Logout</button>
-      </mat-menu>
+      }
     } @else {
-      <a mat-button routerLink="/login" routerLinkActive="active-link">Login</a>
+      @if (profile$ | async; as profile) {
+        @if (profile.sessionToken) {
+          <a mat-button (click)="logout()">Logout</a>
+        } @else {
+          <a mat-button routerLink="/login" routerLinkActive="active-link">Login</a>
+        }
+      } @else {
+        <a mat-button routerLink="/login" routerLinkActive="active-link">Login</a>
+      }
     }
   </nav>
 </mat-toolbar>
 
-@if (showBrowserPersistNote) {
+@if (isBrowserClient) {
   @if (profile$ | async; as profile) {
     @if (!profile.isCloudSynced) {
       <p class="browser-persist-banner" role="note">
         This browser vault can vanish if you clear site data.
-        <a routerLink="/register">Sync to Cloud</a> when you want a durable copy.
+        <a routerLink="/register">Save to Cloud</a> when you want a durable copy.
       </p>
     }
   }

@@ -8,8 +8,8 @@ import { mapProfileToInsert } from '../../shared/models/user/user.mappers';
 import { UserProfile } from '../../shared/models/user/user';
 import { AuthService } from './auth.service';
 
-/** Quiet browser bootstrap label; overwritten when they name themselves at cloud register. */
-const BROWSER_PLACEHOLDER_NAME = 'Local';
+/** Quiet browser bootstrap label; overwritten when they set a display name at Save to Cloud. */
+const BROWSER_PLACEHOLDER_NAME = 'Anonymous';
 
 @Injectable({
   providedIn: 'root',

@@ -5,7 +5,6 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatMenuModule } from '@angular/material/menu';
 import { UserProfileService } from './core/services/user-profile.service';
 import { SetService } from './core/services/set.service';
 import { DeckService } from './core/services/deck.service';
@@ -15,7 +14,7 @@ import { DeckService } from './core/services/deck.service';
   standalone: true,
   imports: [
     CommonModule, RouterOutlet, RouterModule,
-    MatToolbarModule, MatTabsModule, MatButtonModule, MatIconModule, MatMenuModule
+    MatToolbarModule, MatTabsModule, MatButtonModule, MatIconModule
   ],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -30,9 +29,11 @@ export class AppComponent {
   protected readonly profile$ = this.userProfileService.config$;
   protected readonly workspace$ = this.setService.activeContext$;
   protected readonly activeDeck$ = this.deckService.activeDeck$;
-  /** Browser vault can vanish with site data; Sync is the durable path. */
-  protected readonly showBrowserPersistNote =
-    !this.userProfileService.requiresPersonalOnboarding;
+
+  /** Electron / Capacitor: durable local vault; Save to Cloud in the bar, no logout. */
+  protected readonly isDurableClient = this.userProfileService.requiresPersonalOnboarding;
+  /** Browser: volatile vault; banner points at Save to Cloud / register. */
+  protected readonly isBrowserClient = !this.isDurableClient;
 
   protected isCurrentRouteDeck(): boolean {
     return this.router.url.includes('/deck/');
@@ -56,10 +57,14 @@ export class AppComponent {
     }
   }
 
+  /** Browser-only: drop session/profile; silent Anonymous row comes back via ensure. */
   public logout(): void {
     this.userProfileService.clearConfig().subscribe(() => {
       this.setService.unloadWorkspace();
-      this.router.navigate(['/']);
+      this.userProfileService.ensureWorkspaceAccess().subscribe(() => {
+        this.setService.syncInstalledCache();
+        this.router.navigate(['/library']);
+      });
     });
   }
 }
