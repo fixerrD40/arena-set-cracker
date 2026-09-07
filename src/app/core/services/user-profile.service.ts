@@ -171,10 +171,14 @@ export class UserProfileService {
 
   public clearConfig(): Observable<void> {
     return this.vault.delete(systemConfig, 'active_user').pipe(
-      tap(() => this.configSubject.next(null)),
+      tap(() => {
+        this.configSubject.next(null);
+        this.authService.clearAuthenticationState();
+      }),
       map(() => void 0),
       catchError(() => {
         this.configSubject.next(null);
+        this.authService.clearAuthenticationState();
         return of(void 0);
       })
     );

@@ -45,7 +45,20 @@
     } @else {
       @if (profile$ | async; as profile) {
         @if (profile.sessionToken) {
-          <a mat-button (click)="logout()">Logout</a>
+          <button
+            mat-button
+            type="button"
+            (click)="logout()"
+            [disabled]="logoutBusy"
+            [attr.aria-busy]="logoutBusy"
+          >
+            @if (logoutBusy) {
+              <mat-spinner diameter="18" class="chrome-logout-spinner"></mat-spinner>
+              Saving…
+            } @else {
+              Logout
+            }
+          </button>
         } @else {
           <a mat-button routerLink="/login" routerLinkActive="active-link">Login</a>
         }
@@ -57,7 +70,15 @@
 </mat-toolbar>
 
 @if (isBrowserClient) {
-  @if (profile$ | async; as profile) {
+  @if (logoutNeedsChoice) {
+    <p class="browser-persist-banner browser-logout-error" role="alert">
+      Still signed in — we’ll sync when you’re back online.
+      <button type="button" class="banner-text-btn" (click)="retryLogout()" [disabled]="logoutBusy">Retry</button>
+      checkout when ready, or
+      <button type="button" class="banner-text-btn" (click)="abortLogoutKeepLocal()" [disabled]="logoutBusy">Abort</button>
+      to leave with this browser’s local copy.
+    </p>
+  } @else if (profile$ | async; as profile) {
     @if (!profile.isCloudSynced) {
       <p class="browser-persist-banner" role="note">
         This browser vault can vanish if you clear site data.

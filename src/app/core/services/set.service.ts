@@ -15,8 +15,14 @@ import { sets, cards, decks, deckCards, DeckCardRow, DeckRow } from '../sqlite/s
 import { ScryfallService } from './api/scryfall/scryfall.service';
 import { FileSystemService } from './file-system.service';
 import { BackendService } from './backend.service';
-import { mapJsonToSet, mapScryfallToDomainSet } from '../../shared/models/set/set.mappers';
-import { mapJsonToDeck, mapRowToDeck } from '../../shared/models/deck/deck.mappers';
+import { SyncService } from './sync.service';
+import {
+  mapJsonToSet,
+  mapScryfallToDomainSet,
+  serializeSetToJSON
+} from '../../shared/models/set/set.mappers';
+import { mapDeckToJson, mapJsonToDeck, mapRowToDeck } from '../../shared/models/deck/deck.mappers';
+import { OutboxEnvelope } from '../vault/vault.engine';
 
 /** Live install progress for the install-set screen (card-count downloading). */
 export interface SetInstallProgress {
@@ -43,6 +49,7 @@ export class SetService implements OnDestroy {
   private readonly scryfallService = inject(ScryfallService);
   private readonly fileService = inject(FileSystemService);
   private readonly backend = inject(BackendService);
+  private readonly sync = inject(SyncService);
 
   private rosterSubscription?: Subscription;
   private workspaceSubscription?: Subscription;
@@ -109,6 +116,78 @@ export class SetService implements OnDestroy {
       );
     }
     return this.cloudHydrate$;
+  }
+
+  /** Browser logout: drop in-memory roster/workspace so the next session starts blank. */
+  public clearLocalCaches(): void {
+    this.cloudHydrate$ = null;
+    this.unloadWorkspace();
+    this.installedSetsSubject.next([]);
+  }
+
+  /**
+   * Enqueue every local set/deck (decks include card lines) and drain the outbox.
+   * Login: after hydrate, covers Anonymous work that never drained.
+   * Logout: call before wiping so the cloud holds the checkout copy.
+   */
+  public pushLocalDocumentsToCloud(): Observable<void> {
+    return forkJoin({
+      localSets: this.vault.fetchCollection<MtgSet>(sets, 'all'),
+      deckRows: this.vault.fetchCollection<DeckRow>(decks, 'all'),
+      deckCardRows: this.vault.fetchCollection<DeckCardRow>(deckCards, 'all')
+    }).pipe(
+      switchMap(({ localSets, deckRows, deckCardRows }) => {
+        const linesByDeckId = new Map<string, DeckCardRow[]>();
+        for (const row of deckCardRows || []) {
+          const key = String(row.deckId);
+          const bucket = linesByDeckId.get(key) || [];
+          bucket.push(row);
+          linesByDeckId.set(key, bucket);
+        }
+
+        const localDecks: MtgDeck[] = (deckRows || []).map((deckLike) => {
+          const id = String(deckLike.id);
+          const asRow = {
+            id: deckLike.id,
+            setId: deckLike.setId,
+            name: deckLike.name,
+            notes: deckLike.notes || '',
+            coverCardId: deckLike.coverCardId || '',
+            themes: Array.isArray(deckLike.themes) ? deckLike.themes : [],
+            status: deckLike.status || 'concept',
+            createdAt: deckLike.createdAt || new Date().toISOString()
+          } as DeckRow;
+          return mapRowToDeck(asRow, linesByDeckId.get(id) || []);
+        });
+
+        const envelopes: OutboxEnvelope[] = [
+          ...(localSets || []).map(
+            (set): OutboxEnvelope => ({
+              entityType: 'set',
+              action: 'UPDATE',
+              payload: serializeSetToJSON(set)
+            })
+          ),
+          ...localDecks.map(
+            (deck): OutboxEnvelope => ({
+              entityType: 'deck',
+              action: 'UPDATE',
+              payload: mapDeckToJson(deck)
+            })
+          )
+        ];
+
+        if (envelopes.length === 0) {
+          return this.sync.flushNow();
+        }
+
+        return from(envelopes).pipe(
+          concatMap((envelope) => this.sync.enqueue(envelope, { drain: false, softFail: false })),
+          toArray(),
+          switchMap(() => this.sync.flushNow())
+        );
+      })
+    );
   }
 
   /** Rehydrates the installed-sets list from SQLite after boot. */

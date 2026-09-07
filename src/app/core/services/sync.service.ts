@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { merge, of, fromEvent, EMPTY, Subscription, Observable, defer, from } from 'rxjs';
+import { merge, of, fromEvent, EMPTY, Subscription, Observable, defer, from, throwError } from 'rxjs';
 import { exhaustMap, catchError, map, switchMap, tap } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { BackendService } from './backend.service';
@@ -35,18 +35,30 @@ export class SyncService {
     ).subscribe();
   }
 
-  /** Queues an offline mutation; upsert/conflict handling lives in the vault engine. */
-  public enqueue(item: OutboxEnvelope): Observable<void> {
+  /**
+   * Queues an offline mutation; upsert/conflict handling lives in the vault engine.
+   * Pass drain: false when batching many rows before a single flushNow().
+   * Pass softFail: false on logout/login push so a queue write failure aborts.
+   */
+  public enqueue(item: OutboxEnvelope, options?: { drain?: boolean; softFail?: boolean }): Observable<void> {
+    const shouldDrain = options?.drain !== false;
+    const softFail = options?.softFail !== false;
     return from(this.vault.enqueueSyncItem(item)).pipe(
       tap(() => {
-        if (typeof navigator !== 'undefined' && navigator.onLine && this.auth.isAuthenticated()) {
+        if (
+          shouldDrain &&
+          typeof navigator !== 'undefined' &&
+          navigator.onLine &&
+          this.auth.isAuthenticated()
+        ) {
           this.triggerSync();
         }
       }),
       map(() => void 0),
       catchError((err) => {
         console.error('[SyncService] Failed to register sync item:', err);
-        return of(void 0);
+        if (softFail) return of(void 0);
+        return throwError(() => err);
       })
     );
   }
@@ -56,10 +68,17 @@ export class SyncService {
       console.warn('[SyncService] Sync already in motion. Request skipped.');
       return;
     }
-    this.activeSyncSubscription = this.executeBulkSyncPipelineStream().subscribe();
+    this.activeSyncSubscription = this.executeBulkSyncPipelineStream({ softFail: true }).subscribe();
   }
 
-  public executeBulkSyncPipelineStream(): Observable<void> {
+  /** Awaitable drain of sync_queue (login push / logout before wipe). Errors propagate. */
+  public flushNow(): Observable<void> {
+    return this.executeBulkSyncPipelineStream({ softFail: false });
+  }
+
+  public executeBulkSyncPipelineStream(options?: { softFail?: boolean }): Observable<void> {
+    const softFail = options?.softFail !== false;
+
     if (!this.auth.isAuthenticated()) {
       return of(void 0);
     }
@@ -102,7 +121,8 @@ export class SyncService {
         }),
         catchError((err) => {
           console.error('[SyncService] Background transfer terminated.', err);
-          return of(void 0);
+          if (softFail) return of(void 0);
+          return throwError(() => err);
         })
       );
     });

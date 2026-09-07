@@ -38,7 +38,10 @@ export class VerifyEmailComponent implements OnInit {
         this.userProfileService.restoreCloudIdentity({
           token: response.token,
           name: response.displayName
-        }).pipe(switchMap(() => this.setService.hydrateFromCloudOnce()))
+        }).pipe(
+          switchMap(() => this.setService.hydrateFromCloudOnce()),
+          switchMap(() => this.setService.pushLocalDocumentsToCloud())
+        )
       )
     ).subscribe({
       next: () => {

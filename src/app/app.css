@@ -107,6 +107,33 @@
   margin-right: 4px;
 }
 
+.chrome-logout-spinner {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.browser-logout-error {
+  color: var(--chrome-fg);
+}
+
+.banner-text-btn {
+  margin: 0 0.15rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--deck-gold);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.banner-text-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 mat-sidenav-container {
   height: calc(100vh - var(--app-chrome-height));
 }

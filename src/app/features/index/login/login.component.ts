@@ -58,7 +58,8 @@ export class LoginComponent {
           token: response.token,
           name: response.displayName
         }).pipe(
-          switchMap(() => this.setService.hydrateFromCloudOnce())
+          switchMap(() => this.setService.hydrateFromCloudOnce()),
+          switchMap(() => this.setService.pushLocalDocumentsToCloud())
         ).subscribe({
           next: () => {
             this.isLoading = false;

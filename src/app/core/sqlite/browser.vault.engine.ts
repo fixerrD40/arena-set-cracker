@@ -137,6 +137,18 @@ export class BrowserVaultEngine extends VaultEngine {
     void this.flushToIndexedDb();
   }
 
+  /** Replace in-memory DB + IndexedDB snapshot with an empty schema (no sync enqueue). */
+  public async wipeLocalData(): Promise<void> {
+    const SQL = await initSqlJs({ locateFile: (file: string) => `assets/${file}` });
+    this.rawSqliteClient = new SQL.Database();
+    this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
+    this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
+    await this.generateWebDatabaseSchema(this.rawSqliteClient);
+    const currentDbKey = this.activeDbKey ?? 'arena_cache_mtg_vault.db';
+    await this.commitSnapshotToIndexedDb(currentDbKey);
+    console.log('[BrowserVaultEngine] Local vault wiped for browser logout.');
+  }
+
   public async flushToIndexedDb(): Promise<void> {
     const currentDbKey = this.activeDbKey ?? 'arena_cache_mtg_vault.db';
     await this.commitSnapshotToIndexedDb(currentDbKey);
