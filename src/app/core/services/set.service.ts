@@ -16,6 +16,8 @@ import { ScryfallService } from './api/scryfall/scryfall.service';
 import { FileSystemService } from './file-system.service';
 import { BackendService } from './backend.service';
 import { SyncService } from './sync.service';
+import { AppConfigService } from '../config/config.service';
+import { resolveClientPlatform } from '../platform/client-platform';
 import {
   mapJsonToSet,
   mapScryfallToDomainSet,
@@ -50,6 +52,7 @@ export class SetService implements OnDestroy {
   private readonly fileService = inject(FileSystemService);
   private readonly backend = inject(BackendService);
   private readonly sync = inject(SyncService);
+  private readonly config = inject(AppConfigService);
 
   private rosterSubscription?: Subscription;
   private workspaceSubscription?: Subscription;
@@ -500,7 +503,11 @@ export class SetService implements OnDestroy {
           done: domainCards.length,
           total: domainCards.length
         });
-        return this.vault.insertBulk<MtgCard, MtgCard>(cards, domainCards);
+        // Best-effort set key art; missing cover must not fail install.
+        return this.triggerCoverAssetDownload(cleanCode).pipe(
+          catchError(() => of('')),
+          switchMap(() => this.vault.insertBulk<MtgCard, MtgCard>(cards, domainCards))
+        );
       }),
 
       tap(() => {
@@ -607,14 +614,35 @@ export class SetService implements OnDestroy {
     return `${this.getSetDirectoryPath(setCode)}/${arenaId}-art.jpg`;
   }
 
-  /** Resolves a WebView-safe URI for the set cover, with a packaged fallback. */
-  public getSetCoverWebViewUri(setCode: string): Observable<string> {
-    const targetPath = this.getSetCoverArtPath(setCode);
+  /** Public CDN URL for set key art on the sharer. */
+  private coverRemoteUrl(setCode: string): string {
+    const base = (this.config.config.baseUrl || '').replace(/\/$/, '');
+    if (!base) return '';
+    return `${base}/api/assets/covers/${setCode.toLowerCase()}.jpg`;
+  }
 
+  /**
+   * Resolves a display URI for set cover art.
+   * Browser: hit the sharer directly (no durable local art store).
+   * Electron/Capacitor: prefer cached disk, else download / fall back to remote.
+   */
+  public getSetCoverWebViewUri(setCode: string): Observable<string> {
+    const remote = this.coverRemoteUrl(setCode);
+    if (!remote) {
+      return of('');
+    }
+
+    if (resolveClientPlatform() === 'browser') {
+      return of(remote);
+    }
+
+    const targetPath = this.getSetCoverArtPath(setCode);
     return this.fileService.resolvePlatformWebViewUri(targetPath).pipe(
-      catchError(() => {
-        return of('');
-      })
+      catchError(() =>
+        this.fileService.downloadRemoteUrlToDisk(remote, targetPath).pipe(
+          catchError(() => of(remote))
+        )
+      )
     );
   }
 
@@ -636,12 +664,13 @@ export class SetService implements OnDestroy {
     );
   }
 
-  public triggerCoverAssetDownload(remoteServerUrl: string, setCode: string): Observable<string> {
-    const destinationPath = this.getSetCoverArtPath(setCode);
-    const fullRemoteUrl = `${remoteServerUrl}/api/assets/covers/${setCode.toLowerCase()}.jpg`;
-
-    return this.fileService.downloadRemoteUrlToDisk(fullRemoteUrl, destinationPath).pipe(
-      catchError(() => of(''))
+  public triggerCoverAssetDownload(setCode: string): Observable<string> {
+    const remote = this.coverRemoteUrl(setCode);
+    if (!remote) {
+      return of('');
+    }
+    return this.fileService.downloadRemoteUrlToDisk(remote, this.getSetCoverArtPath(setCode)).pipe(
+      catchError(() => of(remote))
     );
   }
 
