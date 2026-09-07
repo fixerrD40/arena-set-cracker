@@ -1,6 +1,7 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { toArray, switchMap, map } from 'rxjs/operators';
 import { AppConfigService } from '../config/config.service';
 import { UserProfileService } from './user-profile.service';
 
@@ -10,7 +11,7 @@ import { UserProfileService } from './user-profile.service';
 export class BackendService {
   private readonly http = inject(HttpClient);
   private readonly config = inject(AppConfigService);
-  // fetch bypasses tokenInterceptor; lazy get avoids UserProfile → DataWire → Outbox → Backend
+  // Lazy get: avoid eager UserProfile ↔ Backend cycles; Bearer still required (fetch skips interceptor).
   private readonly injector = inject(Injector);
 
   private get baseUrl(): string {
@@ -22,49 +23,43 @@ export class BackendService {
     return this.http.get<T[]>(`${this.baseUrl}/api/${segment}?contextId=${contextId}`);
   }
 
-  /** Streams outbox rows as NDJSON to the bulk-sync endpoint. */
+  /**
+   * Posts outbox rows as one NDJSON body.
+   * Buffered on purpose: Chrome streaming fetch (duplex/half) needs HTTP/2 over TLS,
+   * which localhost Spring does not speak — that surfaces as ERR_ALPN_NEGOTIATION_FAILED.
+   */
   public streamJsonRecordsToServer(recordObservable$: Observable<any>): Observable<void> {
-    return new Observable<void>((subscriber) => {
-      const encoder = new TextEncoder();
-
-      const stream = new ReadableStream({
-        start(controller) {
-          recordObservable$.subscribe({
-            next: (row) => {
-              const jsonLine = JSON.stringify(row) + '\n';
-              controller.enqueue(encoder.encode(jsonLine));
-            },
-            complete: () => controller.close(),
-            error: (err) => {
-              controller.error(err);
-              subscriber.error(err);
-            }
-          });
+    return recordObservable$.pipe(
+      toArray(),
+      switchMap((rows) => {
+        const body = rows.length === 0 ? '' : rows.map((row) => JSON.stringify(row)).join('\n') + '\n';
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/x-ndjson'
+        };
+        const sessionToken = this.injector.get(UserProfileService).getSnapshot()?.sessionToken;
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
         }
-      });
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/x-ndjson'
-      };
-      const sessionToken = this.injector.get(UserProfileService).getSnapshot()?.sessionToken;
-      if (sessionToken) {
-        headers['Authorization'] = `Bearer ${sessionToken}`;
-      }
-
-      fetch(`${this.baseUrl}/api/outbox/bulk-sync`, {
-        method: 'POST',
-        headers,
-        body: stream,
-        duplex: 'half'
-      } as any)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`[BackendService] Bulk outbox ingest failed with status: ${response.status}`);
-        }
-        subscriber.next();
-        subscriber.complete();
-      })
-      .catch(err => subscriber.error(err));
-    });
+        return new Observable<void>((subscriber) => {
+          fetch(`${this.baseUrl}/api/outbox/bulk-sync`, {
+            method: 'POST',
+            headers,
+            body
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(
+                  `[BackendService] Bulk outbox ingest failed with status: ${response.status}`
+                );
+              }
+              subscriber.next();
+              subscriber.complete();
+            })
+            .catch((err) => subscriber.error(err));
+        });
+      }),
+      map(() => void 0)
+    );
   }
 }
