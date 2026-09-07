@@ -9,9 +9,9 @@ import { APP_CONFIG } from './core/config/config.model';
 import { tokenInterceptor } from './core/interceptors/token-interceptor';
 
 import { VAULT_ENGINE_TOKEN } from './core/vault/vault.engine';
-import { NativeVaultEngine } from './core/sqlite/native.sqlite.engine';
-import { BrowserWasmVaultEngine } from './core/sqlite/browser-wasm.sqlite.engine';
-import { CapacitorVaultEngine } from './core/sqlite/capacitor.sqlite.engine';
+import { ElectronVaultEngine } from './core/sqlite/electron.vault.engine';
+import { BrowserVaultEngine } from './core/sqlite/browser.vault.engine';
+import { CapacitorVaultEngine } from './core/sqlite/capacitor.vault.engine';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -30,11 +30,11 @@ export const appConfig: ApplicationConfig = {
         const config = inject(APP_CONFIG);
         switch (config.platform) {
           case 'electron':
-            return inject(NativeVaultEngine);
+            return inject(ElectronVaultEngine);
           case 'capacitor':
             return inject(CapacitorVaultEngine);
           default:
-            return inject(BrowserWasmVaultEngine);
+            return inject(BrowserVaultEngine);
         }
       }
     },

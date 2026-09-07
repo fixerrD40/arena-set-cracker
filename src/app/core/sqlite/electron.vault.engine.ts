@@ -23,7 +23,7 @@ import { syncQueue } from './sqlite.schema';
 @Injectable({
   providedIn: 'root'
 })
-export class NativeVaultEngine extends VaultEngine {
+export class ElectronVaultEngine extends VaultEngine {
   private ready = false;
 
   public override async bootstrap(injector: Injector): Promise<void> {
@@ -37,7 +37,7 @@ export class NativeVaultEngine extends VaultEngine {
     const fileName = runtimeConfig.sqliteDbName.replace(/^file:/, '');
     const desktop = getDesktopBridge();
     if (!desktop?.vaultOpen) {
-      throw new Error('[NativeVaultEngine] Desktop vault bridge unavailable.');
+      throw new Error('[ElectronVaultEngine] Desktop vault bridge unavailable.');
     }
 
     try {
@@ -45,12 +45,12 @@ export class NativeVaultEngine extends VaultEngine {
       if (isNew) {
         const ddl = await desktop.drizzleBootstrapSql();
         desktop.vaultExecSync(ddl);
-        console.log('[NativeVaultEngine] Schema initialized via drizzle bootstrap SQL.');
+        console.log('[ElectronVaultEngine] Schema initialized via drizzle bootstrap SQL.');
       }
       this.ready = true;
-      console.log(`[NativeVaultEngine] better-sqlite3 vault open: [${fileName}].`);
+      console.log(`[ElectronVaultEngine] better-sqlite3 vault open: [${fileName}].`);
     } catch (rootError) {
-      console.error('[NativeVaultEngine] Critical failure during desktop vault bootstrap:', rootError);
+      console.error('[ElectronVaultEngine] Critical failure during desktop vault bootstrap:', rootError);
       throw rootError;
     }
   }
@@ -125,7 +125,7 @@ export class NativeVaultEngine extends VaultEngine {
   public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
     const payloadId = String(item.payload?.id);
     if (!payloadId) {
-      console.error('[NativeVaultEngine] Enqueue aborted: Payload lacks unique ID.');
+      console.error('[ElectronVaultEngine] Enqueue aborted: Payload lacks unique ID.');
       return;
     }
 
@@ -166,7 +166,7 @@ export class NativeVaultEngine extends VaultEngine {
   private desktop() {
     const bridge = getDesktopBridge();
     if (!bridge?.vaultOpen || !bridge.vaultRunSync) {
-      throw new Error('[NativeVaultEngine] Desktop vault bridge unavailable.');
+      throw new Error('[ElectronVaultEngine] Desktop vault bridge unavailable.');
     }
     return bridge;
   }

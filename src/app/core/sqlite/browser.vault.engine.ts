@@ -16,12 +16,12 @@ import {
   sqlJsSelectAll,
   sqlJsSelectById,
   sqlJsUpdateRowById
-} from './sqljs-vault-crud';
+} from './browser-sqljs-vault-crud';
 
 @Injectable({
   providedIn: 'root'
 })
-export class BrowserWasmVaultEngine extends VaultEngine {
+export class BrowserVaultEngine extends VaultEngine {
   public rawSqliteClient?: any;
   public cachedDbInstance?: any;
   private activeDbKey?: string;
@@ -38,7 +38,7 @@ export class BrowserWasmVaultEngine extends VaultEngine {
     this.activeDbKey = dbKey;
 
     try {
-      console.log('[BrowserWasmVaultEngine] Bootstrapping browser WebAssembly SQLite instance...');
+      console.log('[BrowserVaultEngine] Bootstrapping browser WebAssembly SQLite instance...');
       const SQL = await initSqlJs({ locateFile: (file: string) => `assets/${file}` });
 
       const savedBinary: Uint8Array | null = await new Promise((resolve) => {
@@ -55,10 +55,10 @@ export class BrowserWasmVaultEngine extends VaultEngine {
       });
 
       if (savedBinary) {
-        console.log(`[BrowserWasmVaultEngine] Container cache [${dbKey}] hydrated successfully.`);
+        console.log(`[BrowserVaultEngine] Container cache [${dbKey}] hydrated successfully.`);
         this.rawSqliteClient = new SQL.Database(savedBinary);
       } else {
-        console.log('[BrowserWasmVaultEngine] Container cache missing. Initializing schema...');
+        console.log('[BrowserVaultEngine] Container cache missing. Initializing schema...');
         this.rawSqliteClient = new SQL.Database();
       }
 
@@ -69,9 +69,9 @@ export class BrowserWasmVaultEngine extends VaultEngine {
         await this.generateWebDatabaseSchema(this.rawSqliteClient);
         await this.commitSnapshotToIndexedDb(dbKey);
       }
-      console.log('[BrowserWasmVaultEngine] Browser web storage sandbox successfully active.');
+      console.log('[BrowserVaultEngine] Browser web storage sandbox successfully active.');
     } catch (error) {
-      console.error('[BrowserWasmVaultEngine] Boot breakdown:', error);
+      console.error('[BrowserVaultEngine] Boot breakdown:', error);
       throw error;
     }
   }
@@ -144,7 +144,7 @@ export class BrowserWasmVaultEngine extends VaultEngine {
 
   private requireDb(): any {
     if (!this.cachedDbInstance) {
-      throw new Error('[BrowserWasmVaultEngine] Engine uninitialized.');
+      throw new Error('[BrowserVaultEngine] Engine uninitialized.');
     }
     return this.cachedDbInstance;
   }
@@ -168,9 +168,9 @@ export class BrowserWasmVaultEngine extends VaultEngine {
         request.onerror = () => reject(request.error);
       });
 
-      console.log(`[BrowserWasmVaultEngine] Memory state successfully flushed to storage key: [${targetDbKey}].`);
+      console.log(`[BrowserVaultEngine] Memory state successfully flushed to storage key: [${targetDbKey}].`);
     } catch (error) {
-      console.error('[BrowserWasmVaultEngine] Critical failure synchronizing binary blocks to browser cache:', error);
+      console.error('[BrowserVaultEngine] Critical failure synchronizing binary blocks to browser cache:', error);
     }
   }
 
@@ -195,9 +195,9 @@ export class BrowserWasmVaultEngine extends VaultEngine {
       const ddlStatementsScript = await response.text();
       const cleaned = ddlStatementsScript.replace(/-->\s*statement-breakpoint/g, '');
       db.run(cleaned);
-      console.log(`[BrowserWasmVaultEngine] Schema initialized via: [${tag}.sql].`);
+      console.log(`[BrowserVaultEngine] Schema initialized via: [${tag}.sql].`);
     } catch (error) {
-      console.error('[BrowserWasmVaultEngine] Could not initialize web DDL rules:', error);
+      console.error('[BrowserVaultEngine] Could not initialize web DDL rules:', error);
       throw error;
     }
   }
