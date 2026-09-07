@@ -46,7 +46,7 @@
       </button>
 
       <mat-menu #profileMenu="matMenu">
-        <button mat-menu-item disabled>Hello, {{ profile.displayName }}</button>
+        <button mat-menu-item disabled>Hello, {{ profile.displayName || 'Local' }}</button>
         @if (!profile.isCloudSynced) {
           <button mat-menu-item routerLink="/register">Link Cloud Credentials</button>
         }
@@ -57,6 +57,17 @@
     }
   </nav>
 </mat-toolbar>
+
+@if (showBrowserPersistNote) {
+  @if (profile$ | async; as profile) {
+    @if (!profile.isCloudSynced) {
+      <p class="browser-persist-banner" role="note">
+        This browser vault can vanish if you clear site data.
+        <a routerLink="/register">Sync to Cloud</a> when you want a durable copy.
+      </p>
+    }
+  }
+}
 
 <!-- Required for mat-tab-nav-bar / mat-tab-nav-panel pairing -->
 <mat-tab-nav-panel #tabPanel></mat-tab-nav-panel>

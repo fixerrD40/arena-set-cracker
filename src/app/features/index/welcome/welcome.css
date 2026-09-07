@@ -26,6 +26,10 @@
   margin: 0;
 }
 
+.welcome-footer p + p {
+  margin-top: 0.65rem;
+}
+
 .restore-link {
   color: var(--deck-gold);
   text-decoration: none;

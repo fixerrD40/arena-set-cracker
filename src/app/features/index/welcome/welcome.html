@@ -2,7 +2,7 @@
   <mat-card class="welcome-card" appearance="raised">
     <mat-card-header>
       <mat-card-title>Arena Set Cracker</mat-card-title>
-      <mat-card-subtitle>Welcome! Let's personalize your offline workspace.</mat-card-subtitle>
+      <mat-card-subtitle>Name this workspace — it stays on this device.</mat-card-subtitle>
     </mat-card-header>
 
     <mat-card-content>
@@ -18,7 +18,6 @@
     </mat-card-content>
 
     <mat-card-actions class="actions-panel">
-      <!-- Button is disabled automatically until valid text is passed -->
       <button
         mat-raised-button
         color="primary"
@@ -28,10 +27,13 @@
       </button>
     </mat-card-actions>
 
-
     <footer class="welcome-footer">
       <p>Already have an account synced to the cloud?
         <a routerLink="/login" class="restore-link">Sign in to restore your library</a>
+      </p>
+      <p>
+        You can refine your display name again when you
+        <a routerLink="/register" class="restore-link">create a cloud account</a>.
       </p>
     </footer>
   </mat-card>

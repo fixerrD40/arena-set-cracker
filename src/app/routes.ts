@@ -26,7 +26,8 @@ export const routes: Routes = [
     loadComponent: () => import('./features/index/about/about.component').then(m => m.AboutComponent)
   },
   {
-    path: 'welcome', // Desktop offline first-run
+    path: 'welcome',
+    canActivate: [welcomeGuard],
     loadComponent: () => import('./features/index/welcome/welcome.component').then(m => m.WelcomeComponent)
   },
   {

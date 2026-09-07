@@ -24,32 +24,27 @@ export class IndexComponent implements OnInit {
   private readonly userProfile = inject(UserProfileService);
   private readonly setService = inject(SetService);
 
-  // Hidden until config check finishes to avoid action flicker
   public readonly showDefaultAction = signal<boolean>(false);
 
   public ngOnInit(): void {
-    const currentProfile = this.userProfile.getSnapshot();
-
-    if (currentProfile && currentProfile.displayName) {
-      console.log('[Index] Active memory profile context confirmed. Fast-tracking straight to Library.');
-      this.setService.syncInstalledCache();
-      this.router.navigate(['/library']);
-    } else {
+    this.userProfile.ensureWorkspaceAccess().subscribe((ready) => {
+      if (ready) {
+        this.setService.syncInstalledCache();
+        this.router.navigate(['/library']);
+        return;
+      }
       this.showDefaultAction.set(true);
-    }
+    });
   }
 
   public handleGetStartedClick(): void {
-    const currentProfile = this.userProfile.getSnapshot();
-
-    if (currentProfile && currentProfile.displayName) {
-      this.setService.syncInstalledCache();
-      this.router.navigate(['/library']);
-      return;
-    }
-
-    const targetRoute = this.userProfile.onboardingTargetRoute;
-    console.log(`[Index] Routing unconfigured session to platform target path: ${targetRoute}`);
-    this.router.navigate([targetRoute]);
+    this.userProfile.ensureWorkspaceAccess().subscribe((ready) => {
+      if (ready) {
+        this.setService.syncInstalledCache();
+        this.router.navigate(['/library']);
+        return;
+      }
+      this.router.navigate([this.userProfile.onboardingTargetRoute]);
+    });
   }
 }

@@ -1,12 +1,15 @@
 import { Injectable, inject, Inject } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
-import { map, tap, catchError } from 'rxjs/operators';
+import { map, tap, catchError, switchMap } from 'rxjs/operators';
 import { systemConfig } from '../sqlite/sqlite.schema';
 import { VaultStore } from './vault/vault.store';
-import { APP_CONFIG } from '../config/config.model';
+import { APP_CONFIG, AppConfigData } from '../config/config.model';
 import { mapProfileToInsert } from '../../shared/models/user/user.mappers';
 import { UserProfile } from '../../shared/models/user/user';
 import { AuthService } from './auth.service';
+
+/** Quiet browser bootstrap label; overwritten when they name themselves at cloud register. */
+const BROWSER_PLACEHOLDER_NAME = 'Local';
 
 @Injectable({
   providedIn: 'root',
@@ -14,7 +17,10 @@ import { AuthService } from './auth.service';
 export class UserProfileService {
   private readonly vault = inject(VaultStore);
   private readonly authService = inject(AuthService);
+  private readonly appConfig: AppConfigData;
 
+  /** Electron / Capacitor: name the durable client first. Browser skips that ritual. */
+  public readonly requiresPersonalOnboarding: boolean;
   public readonly onboardingTargetRoute: string;
 
   private readonly configSubject = new BehaviorSubject<UserProfile | null>(null);
@@ -28,16 +34,18 @@ export class UserProfileService {
     return this.getSnapshot()?.isCloudSynced || false;
   }
 
-  constructor(@Inject(APP_CONFIG) appConfig: any) {
-    this.onboardingTargetRoute = '/welcome';
+  constructor(@Inject(APP_CONFIG) appConfig: AppConfigData) {
+    this.appConfig = appConfig;
+    this.requiresPersonalOnboarding = appConfig.platform !== 'browser';
+    this.onboardingTargetRoute = this.requiresPersonalOnboarding ? '/welcome' : '/library';
   }
 
   public initializeConfig(): Observable<boolean> {
     return this.vault.fetchRecord<any>(systemConfig, 'active_user').pipe(
       map((row) => {
-        if (!row || !row.displayName) return null;
+        if (!row) return null;
         return {
-          displayName: row.displayName,
+          displayName: row.displayName ?? '',
           sessionToken: row.sessionToken,
           isCloudSynced: row.isCloudSynced,
           lastSyncTimestamp: row.lastSyncTimestamp
@@ -48,7 +56,7 @@ export class UserProfileService {
         const hasActiveSession = !!(config && config.sessionToken);
         this.authService.setAuthenticationState(hasActiveSession);
       }),
-      map((config) => !!(config && config.displayName)),
+      map((config) => config !== null),
       catchError(() => {
         this.configSubject.next(null);
         this.authService.clearAuthenticationState();
@@ -57,10 +65,24 @@ export class UserProfileService {
     );
   }
 
-  /** First-time local profile (desktop onboarding). */
+  /**
+   * Ensures a local profile row exists when the host allows anonymous entry (browser).
+   * Durable hosts still require welcome personalization.
+   */
+  public ensureWorkspaceAccess(): Observable<boolean> {
+    return this.initializeConfig().pipe(
+      switchMap((configured) => {
+        if (configured) return of(true);
+        if (this.requiresPersonalOnboarding) return of(false);
+        return this.establishIdentity(BROWSER_PLACEHOLDER_NAME).pipe(map(() => true));
+      })
+    );
+  }
+
+  /** First-time local profile (Electron / Capacitor onboarding). */
   public establishIdentity(name: string): Observable<void> {
     const domainModel: UserProfile = {
-      displayName: name.trim(),
+      displayName: name.trim() || BROWSER_PLACEHOLDER_NAME,
       sessionToken: null,
       isCloudSynced: false,
       lastSyncTimestamp: null
@@ -74,13 +96,15 @@ export class UserProfileService {
     );
   }
 
-  /** Promote local profile after cloud register returns a session token. */
-  public linkLocalProfileToCloud(sessionToken: string): Observable<void> {
+  /** Promote local profile after cloud register; optional rename at the cloud gate. */
+  public linkLocalProfileToCloud(sessionToken: string, displayName?: string): Observable<void> {
     const current = this.getSnapshot();
     if (!current) return of(void 0);
 
+    const trimmed = displayName?.trim();
     const updatedProfile: UserProfile = {
       ...current,
+      displayName: trimmed || current.displayName,
       sessionToken: sessionToken,
       isCloudSynced: true,
       lastSyncTimestamp: new Date().toISOString()
@@ -94,7 +118,7 @@ export class UserProfileService {
     );
   }
 
-  /** Cold restore from login response (overwrite singleton config row). */
+  /** Cold restore from login / register response (overwrite singleton config row). */
   public restoreCloudIdentity(serverPayload: { token: string; name: string }): Observable<void> {
     const restoredProfileRow = {
       id: 'active_user',
@@ -111,7 +135,6 @@ export class UserProfileService {
       lastSyncTimestamp: restoredProfileRow.lastSyncTimestamp
     };
 
-    // Insert overwrites via fixed primary key 'active_user'
     return this.vault.insert(systemConfig, restoredProfileRow).pipe(
       tap(() => this.configSubject.next(domainModel)),
       map(() => void 0)

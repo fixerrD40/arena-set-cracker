@@ -30,6 +30,9 @@ export class AppComponent {
   protected readonly profile$ = this.userProfileService.config$;
   protected readonly workspace$ = this.setService.activeContext$;
   protected readonly activeDeck$ = this.deckService.activeDeck$;
+  /** Browser vault can vanish with site data; Sync is the durable path. */
+  protected readonly showBrowserPersistNote =
+    !this.userProfileService.requiresPersonalOnboarding;
 
   protected isCurrentRouteDeck(): boolean {
     return this.router.url.includes('/deck/');

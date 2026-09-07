@@ -42,8 +42,12 @@ export class AuthService {
       );
   }
 
-  /** Links a local offline profile to the cloud via email + password (no userUuid). */
-  public claimOfflineAccount(credentials: { email: string; password: string }): Observable<CloudSessionResponse> {
+  /** Links a local offline profile to the cloud via email + password (+ optional display name as username). */
+  public claimOfflineAccount(credentials: {
+    email: string;
+    password: string;
+    username?: string;
+  }): Observable<CloudSessionResponse> {
     return this.http
       .post<CloudSessionResponse>(`${this.authUrl}/register`, credentials)
       .pipe(

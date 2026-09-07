@@ -22,6 +22,27 @@
   color: var(--app-fg);
 }
 
+.browser-persist-banner {
+  margin: 0;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--deck-muted);
+  background: color-mix(in srgb, var(--deck-line) 45%, transparent);
+  border-bottom: 1px solid var(--deck-line);
+}
+
+.browser-persist-banner a {
+  color: var(--deck-gold);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.browser-persist-banner a:hover {
+  text-decoration: underline;
+}
+
 .navbar .logo {
   font-size: 1.25rem;
   font-weight: 700;

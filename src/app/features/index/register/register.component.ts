@@ -7,8 +7,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { switchMap } from 'rxjs/operators';
 import { UserProfileService } from '../../../core/services/user-profile.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { SetService } from '../../../core/services/set.service';
 import { MatIconModule } from '@angular/material/icon';
 
 @Component({
@@ -18,12 +20,12 @@ import { MatIconModule } from '@angular/material/icon';
     ReactiveFormsModule,
     RouterModule,
     MatCardModule,
-    MatFormFieldModule,
     MatIconModule,
+    MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
     MatProgressSpinnerModule
-],
+  ],
   templateUrl: './register.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './register.css'
@@ -31,28 +33,28 @@ import { MatIconModule } from '@angular/material/icon';
 export class RegisterComponent implements OnInit {
   private readonly userProfileService = inject(UserProfileService);
   private readonly authService = inject(AuthService);
+  private readonly setService = inject(SetService);
   private readonly router = inject(Router);
 
   public readonly form = new FormGroup({
     email: new FormControl('', [Validators.required, Validators.email]),
-    username: new FormControl({ value: '', disabled: true }, Validators.required),
+    displayName: new FormControl(''),
     password: new FormControl('', Validators.required)
   });
 
+  public hasLocalProfile = false;
   public errorMessage: string | null = null;
   public isLoading = false;
 
   public ngOnInit(): void {
-    this.userProfileService.displayName$.subscribe({
-      next: (name) => {
-        if (name) {
-          this.form.patchValue({ username: name });
-        } else {
-          this.router.navigate(['/welcome']);
+    this.userProfileService.config$.subscribe({
+      next: (profile) => {
+        this.hasLocalProfile = profile !== null;
+        const name = profile?.displayName?.trim();
+        // Skip the silent browser placeholder; anything else is a real local label.
+        if (name && name !== 'Local') {
+          this.form.patchValue({ displayName: name });
         }
-      },
-      error: () => {
-        this.router.navigate(['/welcome']);
       }
     });
   }
@@ -63,38 +65,40 @@ export class RegisterComponent implements OnInit {
     this.errorMessage = null;
     this.isLoading = true;
 
-    // getRawValue includes disabled controls (username)
-    const { email, password } = this.form.getRawValue();
+    const { email, password, displayName } = this.form.getRawValue();
+    const chosenName = (displayName || '').trim();
 
-    const profileSnapshot = this.userProfileService.getSnapshot();
-
-    if (!profileSnapshot) {
-      this.isLoading = false;
-      this.errorMessage = 'Local workspace profile identity is missing.';
-      this.router.navigate(['/welcome']);
-      return;
-    }
-
-    // Register with email + password only; link returned token to local SQLite profile
     this.authService
-      .claimOfflineAccount({ email: email!, password: password! })
+      .claimOfflineAccount({
+        email: email!,
+        password: password!,
+        ...(chosenName ? { username: chosenName } : {})
+      })
+      .pipe(
+        switchMap((response: { token: string; displayName: string }) => {
+          const cloudName = (response.displayName || chosenName).trim();
+          const link$ = this.hasLocalProfile
+            ? this.userProfileService.linkLocalProfileToCloud(
+                response.token,
+                cloudName || undefined
+              )
+            : this.userProfileService.restoreCloudIdentity({
+                token: response.token,
+                name: cloudName || email!.split('@')[0] || 'Player'
+              });
+          return link$.pipe(switchMap(() => this.setService.hydrateFromCloudOnce()));
+        })
+      )
       .subscribe({
-        next: (response: { token: string; displayName: string }) => {
-          this.userProfileService.linkLocalProfileToCloud(response.token).subscribe({
-            next: () => {
-              this.isLoading = false;
-              this.router.navigate(['/library']);
-            },
-            error: (dbErr) => {
-              this.isLoading = false;
-              console.error('[Register] Failed to promote profile row inside SQLite:', dbErr);
-              this.errorMessage = 'Failed to lock secure profile configuration structure down. Please retry.';
-            }
-          });
+        next: () => {
+          this.isLoading = false;
+          this.router.navigate(['/library']);
         },
         error: (err) => {
           this.isLoading = false;
-          this.errorMessage = err.message || 'Registration request failed. Please verify your credentials.';
+          console.error('[Register] Failed to establish cloud session:', err);
+          this.errorMessage =
+            err?.message || 'Registration request failed. Please verify your credentials.';
         }
       });
   }

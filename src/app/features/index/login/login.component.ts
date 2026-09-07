@@ -33,6 +33,9 @@ export class LoginComponent {
   private readonly setService = inject(SetService);
   private readonly router = inject(Router);
 
+  public readonly needsPersonalOnboarding =
+    this.userProfileService.requiresPersonalOnboarding;
+
   public readonly form = new FormGroup({
     email: new FormControl('', [Validators.required, Validators.email]),
     password: new FormControl('', Validators.required)

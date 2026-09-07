@@ -19,7 +19,7 @@ import { SetService } from '../../../core/services/set.service';
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule
-],
+  ],
   templateUrl: './welcome.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './welcome.css'

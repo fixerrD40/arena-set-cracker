@@ -47,7 +47,14 @@
       <a routerLink="/request-password-reset">Forgot your password?</a>
     </p>
     <p class="helper-text">
-      New to this device? <a routerLink="/welcome">Set up your workspace profile</a>
+      New here?
+      @if (needsPersonalOnboarding) {
+        <a routerLink="/welcome">Set up your workspace</a>
+      } @else {
+        <a routerLink="/library">Open the library</a>
+        or
+        <a routerLink="/register">create a cloud account</a>
+      }
     </p>
   </mat-card>
 </div>

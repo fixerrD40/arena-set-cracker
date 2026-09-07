@@ -6,8 +6,8 @@ import { UserProfileService } from '../services/user-profile.service';
 import { SetService } from '../services/set.service';
 
 /**
- * On boot: configured sessions sync the set cache and skip the landing root;
- * unconfigured sessions are limited to index / onboarding routes.
+ * Boot gate: durable hosts need welcome personalization; browser gets a silent
+ * local row and can enter features. Configured sessions skip the landing root.
  */
 export const welcomeGuard: CanActivateFn = (
   _,
@@ -17,12 +17,16 @@ export const welcomeGuard: CanActivateFn = (
   const setService = inject(SetService);
   const router = inject(Router);
 
-  return userProfile.initializeConfig().pipe(
+  return userProfile.ensureWorkspaceAccess().pipe(
     map((isConfigured: boolean) => {
       if (isConfigured) {
         setService.syncInstalledCache();
 
         if (state.url === '/' || state.url === '') {
+          return router.createUrlTree(['/library']);
+        }
+
+        if (state.url.startsWith('/welcome')) {
           return router.createUrlTree(['/library']);
         }
 
@@ -33,7 +37,7 @@ export const welcomeGuard: CanActivateFn = (
         return true;
       }
 
-      if (state.url === userProfile.onboardingTargetRoute) {
+      if (state.url.startsWith('/welcome')) {
         return true;
       }
 
