@@ -19,28 +19,28 @@ export interface SyncQueueItem {
 /** Platform vault host: bootstrap DB, row CRUD, queue ops, flush. */
 export abstract class VaultEngine {
   abstract bootstrap(injector: Injector): Promise<void>;
-  abstract flush(): void;
+  abstract flush(): void | Promise<void>;
 
-  abstract insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): void;
+  abstract insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): Promise<void>;
   abstract updateRowById(
     table: SQLiteTable<any>,
     id: string | number,
     row: Record<string, unknown>
-  ): void;
-  abstract deleteById(table: SQLiteTable<any>, id: string | number): void;
+  ): Promise<void>;
+  abstract deleteById(table: SQLiteTable<any>, id: string | number): Promise<void>;
   abstract deleteWhere(
     table: SQLiteTable<any>,
     columnKey: string,
     value: string | number
-  ): void;
+  ): Promise<void>;
   abstract selectById(
     table: SQLiteTable<any>,
     id: string | number
-  ): Record<string, unknown> | null;
+  ): Promise<Record<string, unknown> | null>;
   abstract selectAll(
     table: SQLiteTable<any>,
     contextId?: string | number
-  ): Record<string, unknown>[];
+  ): Promise<Record<string, unknown>[]>;
 
   abstract getPendingSyncItems(): Promise<SyncQueueItem[]>;
   abstract clearSyncItemsBatch(ids: number[]): Promise<void>;

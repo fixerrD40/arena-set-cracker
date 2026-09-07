@@ -55,7 +55,7 @@ export class NativeVaultEngine extends VaultEngine {
     }
   }
 
-  public insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): void {
+  public async insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): Promise<void> {
     if (!rows.length) return;
     // decks.created_at is NOT NULL without a SQL DEFAULT; drizzle $default only runs in-process.
     const statements = rows.map((row) =>
@@ -64,32 +64,42 @@ export class NativeVaultEngine extends VaultEngine {
     this.desktop().vaultRunBatchSync(statements);
   }
 
-  public updateRowById(
+  public async updateRowById(
     table: SQLiteTable<any>,
     id: string | number,
     row: Record<string, unknown>
-  ): void {
+  ): Promise<void> {
     const statement = buildUpdateByIdSql(table, id, row);
     this.desktop().vaultRunSync(statement.sql, statement.params);
   }
 
-  public deleteById(table: SQLiteTable<any>, id: string | number): void {
+  public async deleteById(table: SQLiteTable<any>, id: string | number): Promise<void> {
     const statement = buildDeleteByIdSql(table, id);
     this.desktop().vaultRunSync(statement.sql, statement.params);
   }
 
-  public deleteWhere(table: SQLiteTable<any>, columnKey: string, value: string | number): void {
+  public async deleteWhere(
+    table: SQLiteTable<any>,
+    columnKey: string,
+    value: string | number
+  ): Promise<void> {
     const statement = buildDeleteWhereSql(table, columnKey, value);
     this.desktop().vaultRunSync(statement.sql, statement.params);
   }
 
-  public selectById(table: SQLiteTable<any>, id: string | number): Record<string, unknown> | null {
+  public async selectById(
+    table: SQLiteTable<any>,
+    id: string | number
+  ): Promise<Record<string, unknown> | null> {
     const statement = buildSelectByIdSql(table, id);
     const raw = this.desktop().vaultGetSync(statement.sql, statement.params);
     return raw ? mapSqlRowToJs(table, raw) : null;
   }
 
-  public selectAll(table: SQLiteTable<any>, contextId?: string | number): Record<string, unknown>[] {
+  public async selectAll(
+    table: SQLiteTable<any>,
+    contextId?: string | number
+  ): Promise<Record<string, unknown>[]> {
     const statement = buildSelectAllSql(table, contextId);
     const rows = this.desktop().vaultAllSync(statement.sql, statement.params);
     return rows.map((row) => mapSqlRowToJs(table, row));

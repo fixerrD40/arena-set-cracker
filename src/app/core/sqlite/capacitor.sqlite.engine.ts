@@ -1,183 +1,196 @@
 import { Injectable, Injector, runInInjectionContext, inject } from '@angular/core';
+import { getTableName } from 'drizzle-orm';
 import { SQLiteTable } from 'drizzle-orm/sqlite-core';
-import { drizzle } from 'drizzle-orm/sql-js';
-import initSqlJs from 'sql.js';
-import { Directory, Filesystem } from '@capacitor/filesystem';
+import {
+  CapacitorSQLite,
+  SQLiteConnection,
+  SQLiteDBConnection
+} from '@capacitor-community/sqlite';
 
 import { OutboxEnvelope, VaultEngine, SyncQueueItem } from '../vault/vault.engine';
-import * as MySchema from './sqlite.schema';
-import { APP_CONFIG } from '../config/config.model';
 import {
-  sqlJsClearSyncItemsBatch,
-  sqlJsDeleteById,
-  sqlJsDeleteWhere,
-  sqlJsEnqueueSyncItem,
-  sqlJsGetPendingSyncItems,
-  sqlJsInsertRows,
-  sqlJsSelectAll,
-  sqlJsSelectById,
-  sqlJsUpdateRowById
-} from './sqljs-vault-crud';
+  buildDeleteByIdSql,
+  buildDeleteWhereSql,
+  buildInsertSql,
+  buildSelectAllSql,
+  buildSelectByIdSql,
+  buildUpdateByIdSql,
+  mapSqlRowToJs
+} from '../vault/vault-table-sql';
+import { APP_CONFIG } from '../config/config.model';
+import { syncQueue } from './sqlite.schema';
 
+/**
+ * Capacitor vault: native SQLite via @capacitor-community/sqlite.
+ * Replaces the prior sql.js + Directory.Data blob path (wipe that file if present).
+ */
 @Injectable({
   providedIn: 'root'
 })
 export class CapacitorVaultEngine extends VaultEngine {
-  public rawSqliteClient?: any;
-  public cachedDbInstance?: any;
-  public activeFileName?: string;
-  private persistChain: Promise<void> = Promise.resolve();
+  private readonly sqlite = new SQLiteConnection(CapacitorSQLite);
+  private db: SQLiteDBConnection | null = null;
+  private dbName = 'mtg_vault';
 
   public override async bootstrap(injector: Injector): Promise<void> {
-    if (this.cachedDbInstance) return;
+    if (this.db) return;
 
     const runtimeConfig = runInInjectionContext(injector, () => {
       const appConfig = inject(APP_CONFIG);
       return { sqliteDbName: appConfig.sqliteDbName };
     });
 
-    this.activeFileName = runtimeConfig.sqliteDbName.replace(/^file:/, '');
+    this.dbName = runtimeConfig.sqliteDbName
+      .replace(/^file:/, '')
+      .replace(/\.db$/i, '');
 
     try {
-      console.log('[CapacitorVaultEngine] Bootstrapping sql.js vault on Directory.Data...');
-      const SQL = await initSqlJs({ locateFile: (file: string) => `assets/${file}` });
-      const existing = await this.readVaultBinary(this.activeFileName);
-
-      if (existing) {
-        this.rawSqliteClient = new SQL.Database(existing);
-        this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
-        this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
-        console.log(`[CapacitorVaultEngine] Loaded vault file: [${this.activeFileName}].`);
+      console.log('[CapacitorVaultEngine] Opening native SQLite connection...');
+      const consistency = await this.sqlite.checkConnectionsConsistency();
+      const isConn = (await this.sqlite.isConnection(this.dbName, false)).result;
+      if (consistency.result && isConn) {
+        this.db = await this.sqlite.retrieveConnection(this.dbName, false);
       } else {
-        console.log('[CapacitorVaultEngine] Vault file missing. Initializing schema...');
-        this.rawSqliteClient = new SQL.Database();
-        this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
-        this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
-        await this.generateDatabaseSchema(this.rawSqliteClient);
-        await this.persistToDisk();
+        this.db = await this.sqlite.createConnection(
+          this.dbName,
+          false,
+          'no-encryption',
+          1,
+          false
+        );
       }
+      await this.db.open();
+
+      const hasSets = await this.db.isTable('sets');
+      if (!hasSets.result) {
+        await this.applyBootstrapSchema();
+      }
+      console.log(`[CapacitorVaultEngine] Native vault open: [${this.dbName}].`);
     } catch (error) {
       console.error('[CapacitorVaultEngine] Boot breakdown:', error);
       throw error;
     }
   }
 
-  public insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): void {
-    sqlJsInsertRows(this.requireDb(), table, rows);
+  public async insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): Promise<void> {
+    if (!rows.length) return;
+    const set = rows.map((row) => {
+      const statement = buildInsertSql(table, this.withInsertDefaults(table, row));
+      return { statement: statement.sql, values: statement.params };
+    });
+    await this.requireDb().executeSet(set);
   }
 
-  public updateRowById(
+  public async updateRowById(
     table: SQLiteTable<any>,
     id: string | number,
     row: Record<string, unknown>
-  ): void {
-    sqlJsUpdateRowById(this.requireDb(), table, id, row);
+  ): Promise<void> {
+    const statement = buildUpdateByIdSql(table, id, row);
+    await this.requireDb().run(statement.sql, statement.params);
   }
 
-  public deleteById(table: SQLiteTable<any>, id: string | number): void {
-    sqlJsDeleteById(this.requireDb(), table, id);
+  public async deleteById(table: SQLiteTable<any>, id: string | number): Promise<void> {
+    const statement = buildDeleteByIdSql(table, id);
+    await this.requireDb().run(statement.sql, statement.params);
   }
 
-  public deleteWhere(table: SQLiteTable<any>, columnKey: string, value: string | number): void {
-    sqlJsDeleteWhere(this.requireDb(), table, columnKey, value);
+  public async deleteWhere(
+    table: SQLiteTable<any>,
+    columnKey: string,
+    value: string | number
+  ): Promise<void> {
+    const statement = buildDeleteWhereSql(table, columnKey, value);
+    await this.requireDb().run(statement.sql, statement.params);
   }
 
-  public selectById(table: SQLiteTable<any>, id: string | number): Record<string, unknown> | null {
-    return sqlJsSelectById(this.requireDb(), table, id);
+  public async selectById(
+    table: SQLiteTable<any>,
+    id: string | number
+  ): Promise<Record<string, unknown> | null> {
+    const statement = buildSelectByIdSql(table, id);
+    const result = await this.requireDb().query(statement.sql, statement.params);
+    const raw = this.firstRow(result.values);
+    return raw ? mapSqlRowToJs(table, raw) : null;
   }
 
-  public selectAll(table: SQLiteTable<any>, contextId?: string | number): Record<string, unknown>[] {
-    return sqlJsSelectAll(this.requireDb(), table, contextId);
+  public async selectAll(
+    table: SQLiteTable<any>,
+    contextId?: string | number
+  ): Promise<Record<string, unknown>[]> {
+    const statement = buildSelectAllSql(table, contextId);
+    const result = await this.requireDb().query(statement.sql, statement.params);
+    return this.rows(result.values).map((row) => mapSqlRowToJs(table, row));
   }
 
   public async getPendingSyncItems(): Promise<SyncQueueItem[]> {
-    if (!this.cachedDbInstance) return [];
-    try {
-      return sqlJsGetPendingSyncItems(this.cachedDbInstance);
-    } catch (error) {
-      console.error('[CapacitorVaultEngine] Failed to read pending outbox logs:', error);
-      return [];
-    }
-  }
-
-  public async clearSyncItemsBatch(ids: number[]): Promise<void> {
-    const db = this.cachedDbInstance;
-    if (!db || ids.length === 0) return;
-    try {
-      sqlJsClearSyncItemsBatch(db, ids);
-      this.flush();
-    } catch (error) {
-      console.error('[CapacitorVaultEngine] Failed to purge sync batch:', error);
-      throw error;
-    }
-  }
-
-  public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
-    const db = this.cachedDbInstance;
-    if (!db) return;
-    try {
-      await sqlJsEnqueueSyncItem(db, item);
-      this.flush();
-    } catch (err) {
-      console.error('[CapacitorVaultEngine] Enqueue failure:', err);
-      throw err;
-    }
-  }
-
-  public flush(): void {
-    this.persistChain = this.persistChain.then(
-      () => this.persistToDisk(),
-      () => this.persistToDisk()
+    const result = await this.requireDb().query(
+      'SELECT * FROM sync_queue ORDER BY id ASC',
+      []
+    );
+    return this.rows(result.values).map(
+      (row) => mapSqlRowToJs(syncQueue, row) as unknown as SyncQueueItem
     );
   }
 
-  private requireDb(): any {
-    if (!this.cachedDbInstance) {
+  public async clearSyncItemsBatch(ids: number[]): Promise<void> {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => '?').join(', ');
+    await this.requireDb().run(
+      `DELETE FROM sync_queue WHERE id IN (${placeholders})`,
+      ids
+    );
+  }
+
+  public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
+    const payloadId = String(item.payload?.id);
+    if (!payloadId) {
+      console.error('[CapacitorVaultEngine] Enqueue aborted: Payload lacks unique ID.');
+      return;
+    }
+
+    const db = this.requireDb();
+    if (item.action === 'DELETE') {
+      await db.run(
+        'DELETE FROM sync_queue WHERE entity_type = ? AND entity_id = ?',
+        [item.entityType, payloadId]
+      );
+    }
+
+    const createdAt = new Date().toISOString();
+    const payloadJson = JSON.stringify(item.payload);
+    await db.run(
+      `INSERT INTO sync_queue (entity_type, entity_id, action, payload, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+         action = excluded.action,
+         payload = excluded.payload,
+         created_at = excluded.created_at`,
+      [item.entityType, payloadId, item.action, payloadJson, createdAt]
+    );
+  }
+
+  /** Native SQLite persists on each write; no blob flush. */
+  public flush(): void {}
+
+  private withInsertDefaults(
+    table: SQLiteTable<any>,
+    row: Record<string, unknown>
+  ): Record<string, unknown> {
+    if (getTableName(table) === 'decks' && row['createdAt'] === undefined) {
+      return { ...row, createdAt: new Date().toISOString() };
+    }
+    return row;
+  }
+
+  private requireDb(): SQLiteDBConnection {
+    if (!this.db) {
       throw new Error('[CapacitorVaultEngine] Engine uninitialized.');
     }
-    return this.cachedDbInstance;
+    return this.db;
   }
 
-  private async persistToDisk(): Promise<void> {
-    const rawDb = this.rawSqliteClient;
-    const fileName = this.activeFileName;
-    if (!rawDb || !fileName) return;
-
-    try {
-      const data = new Uint8Array(rawDb.export());
-      await Filesystem.writeFile({
-        path: fileName,
-        data: this.uint8ToBase64(data),
-        directory: Directory.Data,
-        recursive: true
-      });
-      console.log(`[CapacitorVaultEngine] Persisted vault to Directory.Data: [${fileName}].`);
-    } catch (error) {
-      console.error('[CapacitorVaultEngine] Failed writing vault file:', error);
-    }
-  }
-
-  private async readVaultBinary(fileName: string): Promise<Uint8Array | null> {
-    try {
-      const result = await Filesystem.readFile({
-        path: fileName,
-        directory: Directory.Data
-      });
-      const data = result.data;
-      if (typeof data === 'string') {
-        return this.base64ToUint8(data);
-      }
-      if (data instanceof Blob) {
-        const buffer = await data.arrayBuffer();
-        return new Uint8Array(buffer);
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  private async generateDatabaseSchema(db: any): Promise<void> {
+  private async applyBootstrapSchema(): Promise<void> {
     const journalResponse = await fetch('drizzle/meta/_journal.json');
     if (!journalResponse.ok) {
       throw new Error('Drizzle journal missing from app assets.');
@@ -196,25 +209,16 @@ export class CapacitorVaultEngine extends VaultEngine {
 
     const ddlStatementsScript = await response.text();
     const cleaned = ddlStatementsScript.replace(/-->\s*statement-breakpoint/g, '');
-    db.run(cleaned);
+    await this.requireDb().execute(cleaned);
     console.log(`[CapacitorVaultEngine] Schema initialized via: [${tag}.sql].`);
   }
 
-  private uint8ToBase64(bytes: Uint8Array): string {
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
+  private rows(values: any[] | undefined): Record<string, unknown>[] {
+    if (!values?.length) return [];
+    return values.filter((row) => row && typeof row === 'object') as Record<string, unknown>[];
   }
 
-  private base64ToUint8(base64: string): Uint8Array {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
+  private firstRow(values: any[] | undefined): Record<string, unknown> | null {
+    return this.rows(values)[0] ?? null;
   }
 }

@@ -76,31 +76,41 @@ export class BrowserWasmVaultEngine extends VaultEngine {
     }
   }
 
-  public insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): void {
+  public async insertRows(table: SQLiteTable<any>, rows: Record<string, unknown>[]): Promise<void> {
     sqlJsInsertRows(this.requireDb(), table, rows);
   }
 
-  public updateRowById(
+  public async updateRowById(
     table: SQLiteTable<any>,
     id: string | number,
     row: Record<string, unknown>
-  ): void {
+  ): Promise<void> {
     sqlJsUpdateRowById(this.requireDb(), table, id, row);
   }
 
-  public deleteById(table: SQLiteTable<any>, id: string | number): void {
+  public async deleteById(table: SQLiteTable<any>, id: string | number): Promise<void> {
     sqlJsDeleteById(this.requireDb(), table, id);
   }
 
-  public deleteWhere(table: SQLiteTable<any>, columnKey: string, value: string | number): void {
+  public async deleteWhere(
+    table: SQLiteTable<any>,
+    columnKey: string,
+    value: string | number
+  ): Promise<void> {
     sqlJsDeleteWhere(this.requireDb(), table, columnKey, value);
   }
 
-  public selectById(table: SQLiteTable<any>, id: string | number): Record<string, unknown> | null {
+  public async selectById(
+    table: SQLiteTable<any>,
+    id: string | number
+  ): Promise<Record<string, unknown> | null> {
     return sqlJsSelectById(this.requireDb(), table, id);
   }
 
-  public selectAll(table: SQLiteTable<any>, contextId?: string | number): Record<string, unknown>[] {
+  public async selectAll(
+    table: SQLiteTable<any>,
+    contextId?: string | number
+  ): Promise<Record<string, unknown>[]> {
     return sqlJsSelectAll(this.requireDb(), table, contextId);
   }
 
