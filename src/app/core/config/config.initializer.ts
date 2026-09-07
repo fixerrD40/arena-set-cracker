@@ -1,9 +1,9 @@
 import { inject, Injector } from '@angular/core';
 import { AppConfigService } from './config.service';
-import { OutboxService } from '../services/outbox.service';
+import { SyncService } from '../services/sync.service';
 import { SQLITE_ENGINE_TOKEN } from '../sqlite/sqlite.engine';
 
-/** Loads config, bootstraps SQLite, then starts the outbox sync listener. */
+/** Loads config, bootstraps the vault engine, then starts the sync listener. */
 export function runConfigAndStorageInitialization(): Promise<void> {
   console.log('[ConfigInitializer] Booting...');
 
@@ -23,8 +23,8 @@ export function runConfigAndStorageInitialization(): Promise<void> {
       );
       await sqliteEngine.bootstrap(injector);
 
-      const outboxService = injector.get(OutboxService);
-      outboxService.initializeEngine();
+      const syncService = injector.get(SyncService);
+      syncService.initializeEngine();
 
       console.log('[ConfigInitializer] Startup complete.');
     } catch (error) {

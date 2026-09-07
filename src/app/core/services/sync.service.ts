@@ -6,10 +6,11 @@ import { BackendService } from './backend.service';
 import { SQLITE_ENGINE_TOKEN, OutboxEnvelope } from '../sqlite/sqlite.engine';
 import { SyncQueueRow } from '../sqlite/sqlite.schema';
 
+/** Drains sync_queue to the cloud NDJSON bulk-sync endpoint. */
 @Injectable({
   providedIn: 'root',
 })
-export class OutboxService {
+export class SyncService {
   private readonly auth = inject(AuthService);
   private readonly sqlite = inject(SQLITE_ENGINE_TOKEN);
   private readonly backend = inject(BackendService);
@@ -24,35 +25,35 @@ export class OutboxService {
     merge(of(null), fromEvent(window, 'online')).pipe(
       exhaustMap(() => {
         if (!this.auth.isAuthenticated()) return EMPTY;
-        console.log('[OutboxService] Network online state verified. Commencing background sync...');
+        console.log('[SyncService] Network online. Commencing background sync...');
         return this.executeBulkSyncPipelineStream();
       }),
       catchError((err) => {
-        console.error('[OutboxService] Critical tracking log sync failure:', err);
+        console.error('[SyncService] Critical sync failure:', err);
         return EMPTY;
       })
     ).subscribe();
   }
 
-  /** Queues an offline mutation; upsert/conflict handling lives in the SQLite engine. */
+  /** Queues an offline mutation; upsert/conflict handling lives in the vault engine. */
   public enqueue(item: OutboxEnvelope): Observable<void> {
     return from(this.sqlite.enqueueSyncItem(item)).pipe(
       tap(() => {
         if (typeof navigator !== 'undefined' && navigator.onLine && this.auth.isAuthenticated()) {
-          this.triggerOutboxSync();
+          this.triggerSync();
         }
       }),
       map(() => void 0),
       catchError((err) => {
-        console.error('[OutboxService] Failed to register outbox sync item:', err);
+        console.error('[SyncService] Failed to register sync item:', err);
         return of(void 0);
       })
     );
   }
 
-  public triggerOutboxSync(): void {
+  public triggerSync(): void {
     if (this.activeSyncSubscription && !this.activeSyncSubscription.closed) {
-      console.warn('[OutboxService] Outbox processing already in motion. Request skipped.');
+      console.warn('[SyncService] Sync already in motion. Request skipped.');
       return;
     }
     this.activeSyncSubscription = this.executeBulkSyncPipelineStream().subscribe();
@@ -67,7 +68,7 @@ export class OutboxService {
       return from(this.sqlite.getPendingSyncItems()).pipe(
         switchMap((rawRecords: SyncQueueRow[]) => {
           if (rawRecords.length === 0) {
-            console.log('[OutboxService] Local queue empty. Storage is fully synced with cloud state.');
+            console.log('[SyncService] Local queue empty. Fully synced.');
             return of(void 0);
           }
 
@@ -86,7 +87,7 @@ export class OutboxService {
             })
           );
 
-          console.log(`[OutboxService] Piping ${targetBatchIds.length} sequential operations down the NDJSON channel...`);
+          console.log(`[SyncService] Piping ${targetBatchIds.length} operations down the NDJSON channel...`);
 
           return this.backend.streamJsonRecordsToServer(outboxDataStream$).pipe(
             switchMap(() => {
@@ -94,13 +95,13 @@ export class OutboxService {
               return from(this.sqlite.clearSyncItemsBatch(targetBatchIds));
             }),
             tap(() => {
-              console.log(`[OutboxService] Stream pass completed. Purged ${targetBatchIds.length} entries from database.`);
+              console.log(`[SyncService] Stream pass completed. Purged ${targetBatchIds.length} entries.`);
             }),
             map(() => void 0)
           );
         }),
         catchError((err) => {
-          console.error('[OutboxService] Background transfer stream terminated.', err);
+          console.error('[SyncService] Background transfer terminated.', err);
           return of(void 0);
         })
       );
