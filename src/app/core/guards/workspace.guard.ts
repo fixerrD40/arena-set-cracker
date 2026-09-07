@@ -4,7 +4,7 @@ import { Observable, of } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { SetService } from '../services/set.service';
 import { DeckService } from '../services/deck.service';
-import { DATA_WIRE_TOKEN } from '../services/data-wire/data-wire.contract';
+import { VaultStore } from '../services/vault/vault.store';
 import { decks } from '../sqlite/sqlite.schema';
 import { MtgDeck } from '../../shared/models/deck/deck';
 
@@ -90,7 +90,7 @@ export const createDeckOverlayRedirectGuard: CanActivateFn = (
 export const legacyDeckRedirectGuard: CanActivateFn = (
   route: ActivatedRouteSnapshot
 ): Observable<UrlTree> => {
-  const dataWire = inject(DATA_WIRE_TOKEN);
+  const vault = inject(VaultStore);
   const router = inject(Router);
   const deckId = route.paramMap.get('id');
 
@@ -98,7 +98,7 @@ export const legacyDeckRedirectGuard: CanActivateFn = (
     return of(router.createUrlTree(['/library']));
   }
 
-  return dataWire.fetchRecord<MtgDeck>(decks, deckId).pipe(
+  return vault.fetchRecord<MtgDeck>(decks, deckId).pipe(
     map((row) =>
       row
         ? router.createUrlTree(['/set', row.setId, 'deck', deckId])

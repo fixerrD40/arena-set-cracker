@@ -15,7 +15,8 @@ export interface SyncQueueItem {
   createdAt: string;
 }
 
-export abstract class SqliteEngine {
+/** Platform vault host: bootstrap DB, queue ops, flush. */
+export abstract class VaultEngine {
   abstract bootstrap(injector: Injector): Promise<void>;
   abstract getPendingSyncItems(): Promise<SyncQueueItem[]>;
   abstract clearSyncItemsBatch(ids: number[]): Promise<void>;
@@ -23,4 +24,4 @@ export abstract class SqliteEngine {
   abstract enqueueSyncItem(envelope: OutboxEnvelope): Promise<void>;
 }
 
-export const SQLITE_ENGINE_TOKEN = new InjectionToken<SqliteEngine>('SQLITE_ENGINE_TOKEN');
+export const VAULT_ENGINE_TOKEN = new InjectionToken<VaultEngine>('VAULT_ENGINE_TOKEN');

@@ -6,12 +6,12 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/sql-js';
 import initSqlJs from 'sql.js';
 import { getDesktopBridge } from '../platform/desktop-bridge';
-import { OutboxEnvelope, SqliteEngine, SyncQueueItem } from './sqlite.engine';
+import { OutboxEnvelope, VaultEngine, SyncQueueItem } from '../vault/vault.engine';
 
 @Injectable({
   providedIn: 'root'
 })
-export class NativeSqliteEngine extends SqliteEngine {
+export class NativeVaultEngine extends VaultEngine {
   public rawSqliteClient?: any;
   public cachedDbInstance?: any;
   public activeFileName?: string;
@@ -32,7 +32,7 @@ export class NativeSqliteEngine extends SqliteEngine {
 
     const desktop = getDesktopBridge();
     if (!desktop) {
-      throw new Error('[SqliteEngine] Desktop bridge unavailable.');
+      throw new Error('[VaultEngine] Desktop bridge unavailable.');
     }
 
     try {
@@ -44,9 +44,9 @@ export class NativeSqliteEngine extends SqliteEngine {
         this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
         this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
 
-        console.log(`[SqliteEngine] High-speed Drizzle client loaded via desktop bridge: [${this.activeFileName}].`);
+        console.log(`[VaultEngine] High-speed Drizzle client loaded via desktop bridge: [${this.activeFileName}].`);
       } else {
-        console.log(`[SqliteEngine] Database container file missing. Compiling schema layout...`);
+        console.log(`[VaultEngine] Database container file missing. Compiling schema layout...`);
 
         this.rawSqliteClient = new SQL.Database();
         this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
@@ -57,7 +57,7 @@ export class NativeSqliteEngine extends SqliteEngine {
         await this.persistToDisk();
       }
     } catch (rootError) {
-      console.error('[SqliteEngine] Critical failure during desktop engine initialization pass:', rootError);
+      console.error('[VaultEngine] Critical failure during desktop engine initialization pass:', rootError);
       throw rootError;
     }
   }
@@ -65,13 +65,13 @@ export class NativeSqliteEngine extends SqliteEngine {
   public async getPendingSyncItems(): Promise<SyncQueueItem[]> {
     const db = this.cachedDbInstance;
     if (!db) {
-      console.warn('[SqliteEngine] Sync lookup aborted: Database uninitialized.');
+      console.warn('[VaultEngine] Sync lookup aborted: Database uninitialized.');
       return [];
     }
     try {
       return db.select().from(syncQueue).orderBy(syncQueue.id).all() as SyncQueueItem[];
     } catch (error) {
-      console.error('[SqliteEngine] Failed to read pending outbox logs:', error);
+      console.error('[VaultEngine] Failed to read pending outbox logs:', error);
       return [];
     }
   }
@@ -86,7 +86,7 @@ export class NativeSqliteEngine extends SqliteEngine {
 
       this.flush();
     } catch (error) {
-      console.error('[SqliteEngine] Failed to execute atomic batch purge on disk:', error);
+      console.error('[VaultEngine] Failed to execute atomic batch purge on disk:', error);
       throw error;
     }
   }
@@ -94,13 +94,13 @@ export class NativeSqliteEngine extends SqliteEngine {
   public async enqueueSyncItem(item: OutboxEnvelope): Promise<void> {
     const db = this.cachedDbInstance;
     if (!db) {
-      console.warn('[SqliteEngine] SQLite database instance uninitialized.');
+      console.warn('[VaultEngine] SQLite database instance uninitialized.');
       return;
     }
 
     const payloadId = String(item.payload?.id);
     if (!payloadId) {
-      console.error('[SqliteEngine] Enqueue aborted: Payload lacks unique ID.');
+      console.error('[VaultEngine] Enqueue aborted: Payload lacks unique ID.');
       return;
     }
 
@@ -130,7 +130,7 @@ export class NativeSqliteEngine extends SqliteEngine {
 
       this.flush();
     } catch (err) {
-      console.error('[SqliteEngine] Database upsert failure:', err);
+      console.error('[VaultEngine] Database upsert failure:', err);
       throw err;
     }
   }
@@ -151,14 +151,14 @@ export class NativeSqliteEngine extends SqliteEngine {
     try {
       const data = new Uint8Array(rawDb.export());
       await desktop.sqliteWrite(fileName, data);
-      console.log(`[SqliteEngine] Memory cache state successfully persisted to disk: [${fileName}].`);
+      console.log(`[VaultEngine] Memory cache state successfully persisted to disk: [${fileName}].`);
     } catch (error) {
-      console.error('[SqliteEngine] Critical failure writing binary block to disk:', error);
+      console.error('[VaultEngine] Critical failure writing binary block to disk:', error);
     }
   }
 
   private generateDatabaseSchema(db: any, ddlStatementsScript: string): void {
     db.run(ddlStatementsScript);
-    console.log('[SqliteEngine] Database schema successfully initialized via drizzle bootstrap SQL.');
+    console.log('[VaultEngine] Database schema successfully initialized via drizzle bootstrap SQL.');
   }
 }

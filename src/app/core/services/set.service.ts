@@ -1,7 +1,7 @@
 import { inject, Injectable, OnDestroy } from '@angular/core';
 import { BehaviorSubject, from, Observable, of, Subject, Subscription, throwError, forkJoin } from 'rxjs';
 import { catchError, concatMap, map, shareReplay, switchMap, takeUntil, tap, toArray } from 'rxjs/operators';
-import { DATA_WIRE_TOKEN } from './data-wire/data-wire.contract';
+import { VaultStore } from './vault/vault.store';
 
 import { CloudSetPayload, MtgSet } from '../../shared/models/set/set';
 import { MtgCard } from '../../shared/models/card/card';
@@ -39,7 +39,7 @@ export interface WorkspaceState {
   providedIn: 'root'
 })
 export class SetService implements OnDestroy {
-  private readonly dataWire = inject(DATA_WIRE_TOKEN);
+  private readonly vault = inject(VaultStore);
   private readonly scryfallService = inject(ScryfallService);
   private readonly fileService = inject(FileSystemService);
   private readonly backend = inject(BackendService);
@@ -115,7 +115,7 @@ export class SetService implements OnDestroy {
   public syncInstalledCache(): void {
     this.rosterSubscription?.unsubscribe();
 
-    this.rosterSubscription = this.dataWire.fetchCollection<MtgSet>(sets, 'all').pipe(
+    this.rosterSubscription = this.vault.fetchCollection<MtgSet>(sets, 'all').pipe(
       tap((domainSets: MtgSet[]) => this.installedSetsSubject.next(domainSets)),
       catchError((err) => {
         console.error('[SetService] Failed to sync local roster cache:', err?.message || err);
@@ -169,10 +169,10 @@ export class SetService implements OnDestroy {
 
   private assembleWorkspace(setId: string): Observable<WorkspaceState> {
     return forkJoin({
-      setInfo: this.dataWire.fetchRecord<MtgSet>(sets, setId),
-      deckModels: this.dataWire.fetchCollection<DeckRow>(decks, setId),
-      cardModels: this.dataWire.fetchCollection<MtgCard>(cards, setId),
-      deckCardRows: this.dataWire.fetchCollection<DeckCardRow>(deckCards, 'all')
+      setInfo: this.vault.fetchRecord<MtgSet>(sets, setId),
+      deckModels: this.vault.fetchCollection<DeckRow>(decks, setId),
+      cardModels: this.vault.fetchCollection<MtgCard>(cards, setId),
+      deckCardRows: this.vault.fetchCollection<DeckCardRow>(deckCards, 'all')
     }).pipe(
       switchMap(({ setInfo, deckModels, cardModels, deckCardRows }) => {
         if (!setInfo) {
@@ -223,7 +223,7 @@ export class SetService implements OnDestroy {
   }
 
   private ensureLocalCatalog(set: MtgSet): Observable<void> {
-    return this.dataWire.fetchCollection<MtgCard>(cards, set.id).pipe(
+    return this.vault.fetchCollection<MtgCard>(cards, set.id).pipe(
       switchMap((existing) => {
         if (existing.length > 0) return of(void 0);
 
@@ -236,7 +236,7 @@ export class SetService implements OnDestroy {
           switchMap((domainCards) =>
             domainCards.length === 0
               ? of([])
-              : this.dataWire.insertBulk(cards, domainCards)
+              : this.vault.insertBulk(cards, domainCards)
           ),
           map(() => void 0)
         );
@@ -249,19 +249,19 @@ export class SetService implements OnDestroy {
   }
 
   private writeHydratedSet(set: MtgSet): Observable<MtgSet> {
-    return this.dataWire.fetchRecord<MtgSet>(sets, set.id).pipe(
+    return this.vault.fetchRecord<MtgSet>(sets, set.id).pipe(
       switchMap((existing) =>
-        existing ? this.dataWire.update(sets, set) : this.dataWire.insert(sets, set)
+        existing ? this.vault.update(sets, set) : this.vault.insert(sets, set)
       )
     );
   }
 
   private persistHydratedDeck(deck: MtgDeck): Observable<MtgDeck> {
-    return this.dataWire.fetchRecord<MtgDeck>(decks, deck.id).pipe(
+    return this.vault.fetchRecord<MtgDeck>(decks, deck.id).pipe(
       switchMap((existing) =>
-        existing ? this.dataWire.update(decks, deck) : this.dataWire.insert(decks, deck)
+        existing ? this.vault.update(decks, deck) : this.vault.insert(decks, deck)
       ),
-      switchMap(() => this.dataWire.deleteWhere(deckCards, 'deckId', deck.id)),
+      switchMap(() => this.vault.deleteWhere(deckCards, 'deckId', deck.id)),
       switchMap(() => {
         const lines = Array.from(deck.cards.entries()).map(([cardId, quantity]) => ({
           deckId: deck.id,
@@ -269,7 +269,7 @@ export class SetService implements OnDestroy {
           quantity
         }));
         if (lines.length === 0) return of([]);
-        return this.dataWire.insertBulk(deckCards, lines).pipe(
+        return this.vault.insertBulk(deckCards, lines).pipe(
           catchError((err) => {
             console.error(`[SetService] Hydrated deck lines failed for ${deck.id}:`, err?.message || err);
             return of([]);
@@ -302,7 +302,7 @@ export class SetService implements OnDestroy {
 
     emitProgress({ phase: 'catalog', done: 0, total: 0 });
 
-    return this.dataWire.insert<MtgSet, MtgSet>(sets, domainSet).pipe(
+    return this.vault.insert<MtgSet, MtgSet>(sets, domainSet).pipe(
       switchMap(() => this.scryfallService.getCardsBySet(cleanCode)),
 
       switchMap((scryfallCards: ScryfallCard[]) => {
@@ -348,7 +348,7 @@ export class SetService implements OnDestroy {
           done: domainCards.length,
           total: domainCards.length
         });
-        return this.dataWire.insertBulk<MtgCard, MtgCard>(cards, domainCards);
+        return this.vault.insertBulk<MtgCard, MtgCard>(cards, domainCards);
       }),
 
       tap(() => {
@@ -403,21 +403,21 @@ export class SetService implements OnDestroy {
   public uninstall(set: MtgSet): Observable<void> {
     // FK CASCADE exists in DDL but SQLite ignores it unless PRAGMA foreign_keys=ON;
     // purge children explicitly so reinstall does not hit leftover Scryfall card PKs.
-    return this.dataWire.fetchCollection<DeckRow>(decks, set.id).pipe(
+    return this.vault.fetchCollection<DeckRow>(decks, set.id).pipe(
       concatMap((setDecks) => {
         const clearDeckCards$ =
           setDecks.length === 0
             ? of(void 0)
             : from(setDecks).pipe(
-                concatMap((deck) => this.dataWire.deleteWhere(deckCards, 'deckId', deck.id)),
+                concatMap((deck) => this.vault.deleteWhere(deckCards, 'deckId', deck.id)),
                 toArray(),
                 map(() => void 0)
               );
 
         return clearDeckCards$.pipe(
-          concatMap(() => this.dataWire.deleteWhere(cards, 'setId', set.id)),
-          concatMap(() => this.dataWire.deleteWhere(decks, 'setId', set.id)),
-          concatMap(() => this.dataWire.delete(sets, set.id)),
+          concatMap(() => this.vault.deleteWhere(cards, 'setId', set.id)),
+          concatMap(() => this.vault.deleteWhere(decks, 'setId', set.id)),
+          concatMap(() => this.vault.delete(sets, set.id)),
           concatMap(() => this.fileService.deleteDirectory(this.getSetDirectoryPath(set.code)))
         );
       }),
@@ -524,7 +524,7 @@ export class SetService implements OnDestroy {
     const current = this.currentWorkspaceSnapshot;
     if (!current) return of(void 0);
 
-    return this.dataWire.update<MtgSet, MtgSet>(sets, current.setInfo).pipe(
+    return this.vault.update<MtgSet, MtgSet>(sets, current.setInfo).pipe(
       tap(() => {
         console.log(`[SetService] Database catalog sync complete for expansion: ${current.setInfo.name}`);
       }),

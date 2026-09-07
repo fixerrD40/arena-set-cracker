@@ -3,8 +3,7 @@ import { Observable, of, throwError, from } from 'rxjs';
 import { concatMap, catchError, map, toArray } from 'rxjs/operators';
 import { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { eq, getTableName, getTableColumns } from 'drizzle-orm';
-import { DataWire } from './data-wire.contract';
-import { SQLITE_ENGINE_TOKEN } from '../../sqlite/sqlite.engine';
+import { VAULT_ENGINE_TOKEN } from '../../vault/vault.engine';
 import { SyncService } from '../sync.service';
 import {
   serializePayload,
@@ -13,20 +12,20 @@ import {
 } from '../../sqlite/sqlite.registry';
 import { toOutboxPayload } from './outbox.payload';
 
-/** Local vault CRUD + outbox enqueue for syncable sets/decks. Persist host is the injected SqliteEngine. */
+/** Local vault CRUD; enqueues syncable sets/decks for SyncService. */
 @Injectable({
   providedIn: 'root'
 })
-export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
-  private readonly sqliteEngine = inject(SQLITE_ENGINE_TOKEN);
+export class VaultStore {
+  private readonly vaultEngine = inject(VAULT_ENGINE_TOKEN);
   private readonly sync = inject(SyncService);
 
   public insert<TInput = any, TOutput = any>(
     table: SQLiteTable<any>,
     domainModel: TInput
   ): Observable<TOutput> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine uninitialized.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
 
     try {
       const tableName = getTableName(table);
@@ -57,8 +56,8 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
     table: SQLiteTable<any>,
     payloads: TInput[]
   ): Observable<TOutput[]> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine not bootstrapped.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine not bootstrapped.'));
     if (!payloads || payloads.length === 0) return of([]);
 
     try {
@@ -95,15 +94,15 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
     table: SQLiteTable<any>,
     domainModel: TInput
   ): Observable<TOutput> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine uninitialized.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
 
     try {
       const idColumn = (table as any).id;
       const recordId = (domainModel as any)?.id;
 
       if (!idColumn || !recordId) {
-        return throwError(() => new Error('[SqliteDataWire] Update aborted: Missing primary identity column key "id".'));
+        return throwError(() => new Error('[VaultStore] Update aborted: Missing primary identity column key "id".'));
       }
 
       const dbPayload = serializePayload(table, domainModel);
@@ -135,13 +134,13 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
     table: SQLiteTable<any>,
     id: string | number
   ): Observable<void> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine not bootstrapped.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine not bootstrapped.'));
 
     try {
       const idColumn = (table as any).id;
       if (!idColumn) {
-        return throwError(() => new Error('[SqliteDataWire] Table lacks an "id" tracker token.'));
+        return throwError(() => new Error('[VaultStore] Table lacks an "id" tracker token.'));
       }
 
       db.delete(table).where(eq(idColumn, id)).run();
@@ -173,14 +172,14 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
     columnKey: string,
     value: string | number
   ): Observable<void> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine not bootstrapped.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine not bootstrapped.'));
 
     try {
       const columns = getTableColumns(table);
       const column = columns[columnKey];
       if (!column) {
-        return throwError(() => new Error(`[SqliteDataWire] Column "${columnKey}" not found on table.`));
+        return throwError(() => new Error(`[VaultStore] Column "${columnKey}" not found on table.`));
       }
 
       db.delete(table).where(eq(column, value)).run();
@@ -195,13 +194,13 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
     table: SQLiteTable<any>,
     id: string | number
   ): Observable<TOutput | null> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine uninitialized.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
 
     try {
       const idColumn = (table as any).id;
       if (!idColumn) {
-        return throwError(() => new Error('[SqliteDataWire] Table lacks an "id" tracking token.'));
+        return throwError(() => new Error('[VaultStore] Table lacks an "id" tracking token.'));
       }
 
       const untypedRows = db
@@ -218,7 +217,7 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
       const hydratedResult = hydrateRow<TOutput>(table, untypedRows[0]);
       return of(hydratedResult);
     } catch (err) {
-      console.error(`[SqliteDataWire] fetchRecord failure on key ${id}:`, err);
+      console.error(`[VaultStore] fetchRecord failure on key ${id}:`, err);
       return throwError(() => err);
     }
   }
@@ -227,8 +226,8 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
     table: SQLiteTable<any>,
     contextId?: string | number
   ): Observable<TOutput[]> {
-    const db = (this.sqliteEngine as any).cachedDbInstance;
-    if (!db) return throwError(() => new Error('[SqliteDataWire] Engine uninitialized.'));
+    const db = (this.vaultEngine as any).cachedDbInstance;
+    if (!db) return throwError(() => new Error('[VaultStore] Engine uninitialized.'));
 
     try {
       const columns = getTableColumns(table);
@@ -249,8 +248,8 @@ export class SqliteDataWire implements DataWire<SQLiteTable<any>> {
   }
 
   public flush(): void {
-    if (typeof (this.sqliteEngine as any).flush === 'function') {
-      (this.sqliteEngine as any).flush();
+    if (typeof (this.vaultEngine as any).flush === 'function') {
+      (this.vaultEngine as any).flush();
     }
   }
 }

@@ -1,4 +1,5 @@
 import { InjectionToken } from '@angular/core';
+import { ClientPlatform } from '../platform/client-platform';
 
 export interface ScryfallConfigData {
   apiUrl: string;
@@ -11,6 +12,8 @@ export interface AppConfigData {
   baseUrl: string;       // Cloud backend for outbox sync
   sqliteDbName: string;  // Local desktop DB filename
   scryfall: ScryfallConfigData;
+  platform: ClientPlatform;
+  /** Convenience for existing electron vs shared-web wiring. */
   isElectron: boolean;
 }
 

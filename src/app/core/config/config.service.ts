@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { AppConfigData } from './config.model';
-import { isElectronRenderer } from '../platform/desktop-bridge';
+import { resolveClientPlatform } from '../platform/client-platform';
 
 @Injectable({
   providedIn: 'root'
@@ -8,15 +8,12 @@ import { isElectronRenderer } from '../platform/desktop-bridge';
 export class AppConfigService {
   private runtimeConfig!: AppConfigData;
 
-  private evaluateIsElectron(): boolean {
-    return isElectronRenderer();
-  }
-
   /**
    * Universal fetch operation capturing your asset payload and merging platform metadata.
    */
   public async load(): Promise<AppConfigData> {
-    const isElectron = this.evaluateIsElectron();
+    const platform = resolveClientPlatform();
+    const isElectron = platform === 'electron';
 
     try {
       const response = await fetch('assets/config.json');
@@ -27,7 +24,8 @@ export class AppConfigService {
         baseUrl: json.baseUrl ?? '',
         sqliteDbName: json.sqliteDbName ?? 'app_database.sqlite',
         scryfall: json.scryfall ?? this.getScryfallFallback(),
-        isElectron: isElectron
+        platform,
+        isElectron
       };
     } catch (error) {
       console.error('Critical Error: Failed to load local configuration file async:', error);
@@ -36,7 +34,8 @@ export class AppConfigService {
         baseUrl: '',
         sqliteDbName: 'app_database.sqlite',
         scryfall: this.getScryfallFallback(),
-        isElectron: isElectron
+        platform,
+        isElectron
       };
     }
 

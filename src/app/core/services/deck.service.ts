@@ -6,7 +6,7 @@ import { MtgCard } from '../../shared/models/card/card';
 import { cloneDeck, DeckStatus, MtgDeck } from '../../shared/models/deck/deck';
 import { deckCopyLimit } from '../../shared/models/deck/deck.copy-limit';
 import { decks, deckCards } from '../sqlite/sqlite.schema';
-import { DATA_WIRE_TOKEN } from './data-wire/data-wire.contract';
+import { VaultStore } from './vault/vault.store';
 
 export interface DisplayedCardLine {
   card: MtgCard;
@@ -17,7 +17,7 @@ export interface DisplayedCardLine {
   providedIn: 'root'
 })
 export class DeckService {
-  private readonly dataWire = inject(DATA_WIRE_TOKEN);
+  private readonly vault = inject(VaultStore);
   private readonly setService = inject(SetService);
 
   private readonly activeDeckSource = new BehaviorSubject<MtgDeck | null>(null);
@@ -292,11 +292,11 @@ export class DeckService {
    */
   private persistDeck(deck: MtgDeck, options: { isNew: boolean }): Observable<MtgDeck> {
     const writeParent$ = options.isNew
-      ? this.dataWire.insert(decks, deck)
-      : this.dataWire.update(decks, deck);
+      ? this.vault.insert(decks, deck)
+      : this.vault.update(decks, deck);
 
     return writeParent$.pipe(
-      switchMap(() => this.dataWire.deleteWhere(deckCards, 'deckId', deck.id)),
+      switchMap(() => this.vault.deleteWhere(deckCards, 'deckId', deck.id)),
       switchMap(() => {
         const relationsPayloads = Array.from(deck.cards.entries()).map(([cardId, qty]) => ({
           deckId: deck.id,
@@ -305,7 +305,7 @@ export class DeckService {
         }));
 
         if (relationsPayloads.length === 0) return of([]);
-        return this.dataWire.insertBulk(deckCards, relationsPayloads);
+        return this.vault.insertBulk(deckCards, relationsPayloads);
       }),
       tap(() => {
         console.log(`[DeckService] Persisted deck "${deck.name}" with ${deck.cards.size} unique card lines.`);

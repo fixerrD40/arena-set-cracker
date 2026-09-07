@@ -2,7 +2,7 @@ import { Injectable, inject, Inject } from '@angular/core';
 import { BehaviorSubject, Observable, of } from 'rxjs';
 import { map, tap, catchError } from 'rxjs/operators';
 import { systemConfig } from '../sqlite/sqlite.schema';
-import { DATA_WIRE_TOKEN } from './data-wire/data-wire.contract';
+import { VaultStore } from './vault/vault.store';
 import { APP_CONFIG } from '../config/config.model';
 import { mapProfileToInsert } from '../../shared/models/user/user.mappers';
 import { UserProfile } from '../../shared/models/user/user';
@@ -12,7 +12,7 @@ import { AuthService } from './auth.service';
   providedIn: 'root',
 })
 export class UserProfileService {
-  private readonly dataWire = inject(DATA_WIRE_TOKEN);
+  private readonly vault = inject(VaultStore);
   private readonly authService = inject(AuthService);
 
   public readonly onboardingTargetRoute: string;
@@ -29,11 +29,11 @@ export class UserProfileService {
   }
 
   constructor(@Inject(APP_CONFIG) appConfig: any) {
-    this.onboardingTargetRoute = appConfig.isElectron ? '/welcome' : '/login';
+    this.onboardingTargetRoute = '/welcome';
   }
 
   public initializeConfig(): Observable<boolean> {
-    return this.dataWire.fetchRecord<any>(systemConfig, 'active_user').pipe(
+    return this.vault.fetchRecord<any>(systemConfig, 'active_user').pipe(
       map((row) => {
         if (!row || !row.displayName) return null;
         return {
@@ -68,7 +68,7 @@ export class UserProfileService {
 
     const dbPayload = mapProfileToInsert(domainModel);
 
-    return this.dataWire.insert(systemConfig, dbPayload).pipe(
+    return this.vault.insert(systemConfig, dbPayload).pipe(
       tap(() => this.configSubject.next(domainModel)),
       map(() => void 0)
     );
@@ -88,7 +88,7 @@ export class UserProfileService {
 
     const dbPayload = mapProfileToInsert(updatedProfile);
 
-    return this.dataWire.update(systemConfig, dbPayload).pipe(
+    return this.vault.update(systemConfig, dbPayload).pipe(
       tap(() => this.configSubject.next(updatedProfile)),
       map(() => void 0)
     );
@@ -112,7 +112,7 @@ export class UserProfileService {
     };
 
     // Insert overwrites via fixed primary key 'active_user'
-    return this.dataWire.insert(systemConfig, restoredProfileRow).pipe(
+    return this.vault.insert(systemConfig, restoredProfileRow).pipe(
       tap(() => this.configSubject.next(domainModel)),
       map(() => void 0)
     );
@@ -130,7 +130,7 @@ export class UserProfileService {
 
     const dbPayload = mapProfileToInsert(updatedProfile);
 
-    return this.dataWire.update(systemConfig, dbPayload).pipe(
+    return this.vault.update(systemConfig, dbPayload).pipe(
       tap(() => this.configSubject.next(updatedProfile)),
       map(() => void 0)
     );
@@ -141,7 +141,7 @@ export class UserProfileService {
   }
 
   public clearConfig(): Observable<void> {
-    return this.dataWire.delete(systemConfig, 'active_user').pipe(
+    return this.vault.delete(systemConfig, 'active_user').pipe(
       tap(() => this.configSubject.next(null)),
       map(() => void 0),
       catchError(() => {

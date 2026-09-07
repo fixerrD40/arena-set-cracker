@@ -8,13 +8,10 @@ import { AppConfigService } from './core/config/config.service';
 import { APP_CONFIG } from './core/config/config.model';
 import { tokenInterceptor } from './core/interceptors/token-interceptor';
 
-import { SQLITE_ENGINE_TOKEN } from './core/sqlite/sqlite.engine';
-import { NativeSqliteEngine } from './core/sqlite/native.sqlite.engine';
-import { BrowserWasmSqliteEngine } from './core/sqlite/browser-wasm.sqlite.engine';
-
-import { DATA_WIRE_TOKEN } from './core/services/data-wire/data-wire.contract';
-import { ElectronDataWire } from './core/services/data-wire/electron.data-wire';
-import { CloudDataWire } from './core/services/data-wire/cloud.data-wire';
+import { VAULT_ENGINE_TOKEN } from './core/vault/vault.engine';
+import { NativeVaultEngine } from './core/sqlite/native.sqlite.engine';
+import { BrowserWasmVaultEngine } from './core/sqlite/browser-wasm.sqlite.engine';
+import { CapacitorVaultEngine } from './core/sqlite/capacitor.sqlite.engine';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -28,18 +25,17 @@ export const appConfig: ApplicationConfig = {
     },
 
     {
-      provide: SQLITE_ENGINE_TOKEN,
+      provide: VAULT_ENGINE_TOKEN,
       useFactory: () => {
         const config = inject(APP_CONFIG);
-        return config.isElectron ? inject(NativeSqliteEngine) : inject(BrowserWasmSqliteEngine);
-      }
-    },
-
-    {
-      provide: DATA_WIRE_TOKEN,
-      useFactory: () => {
-        const config = inject(APP_CONFIG);
-        return config.isElectron ? inject(ElectronDataWire) : inject(CloudDataWire);
+        switch (config.platform) {
+          case 'electron':
+            return inject(NativeVaultEngine);
+          case 'capacitor':
+            return inject(CapacitorVaultEngine);
+          default:
+            return inject(BrowserWasmVaultEngine);
+        }
       }
     },
 

@@ -3,7 +3,7 @@ import { merge, of, fromEvent, EMPTY, Subscription, Observable, defer, from } fr
 import { exhaustMap, catchError, map, switchMap, tap } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { BackendService } from './backend.service';
-import { SQLITE_ENGINE_TOKEN, OutboxEnvelope } from '../sqlite/sqlite.engine';
+import { VAULT_ENGINE_TOKEN, OutboxEnvelope } from '../vault/vault.engine';
 import { SyncQueueRow } from '../sqlite/sqlite.schema';
 
 /** Drains sync_queue to the cloud NDJSON bulk-sync endpoint. */
@@ -12,7 +12,7 @@ import { SyncQueueRow } from '../sqlite/sqlite.schema';
 })
 export class SyncService {
   private readonly auth = inject(AuthService);
-  private readonly sqlite = inject(SQLITE_ENGINE_TOKEN);
+  private readonly vault = inject(VAULT_ENGINE_TOKEN);
   private readonly backend = inject(BackendService);
 
   private activeSyncSubscription?: Subscription;
@@ -37,7 +37,7 @@ export class SyncService {
 
   /** Queues an offline mutation; upsert/conflict handling lives in the vault engine. */
   public enqueue(item: OutboxEnvelope): Observable<void> {
-    return from(this.sqlite.enqueueSyncItem(item)).pipe(
+    return from(this.vault.enqueueSyncItem(item)).pipe(
       tap(() => {
         if (typeof navigator !== 'undefined' && navigator.onLine && this.auth.isAuthenticated()) {
           this.triggerSync();
@@ -65,7 +65,7 @@ export class SyncService {
     }
 
     return defer(() => {
-      return from(this.sqlite.getPendingSyncItems()).pipe(
+      return from(this.vault.getPendingSyncItems()).pipe(
         switchMap((rawRecords: SyncQueueRow[]) => {
           if (rawRecords.length === 0) {
             console.log('[SyncService] Local queue empty. Fully synced.');
@@ -92,7 +92,7 @@ export class SyncService {
           return this.backend.streamJsonRecordsToServer(outboxDataStream$).pipe(
             switchMap(() => {
               if (targetBatchIds.length === 0) return of(void 0);
-              return from(this.sqlite.clearSyncItemsBatch(targetBatchIds));
+              return from(this.vault.clearSyncItemsBatch(targetBatchIds));
             }),
             tap(() => {
               console.log(`[SyncService] Stream pass completed. Purged ${targetBatchIds.length} entries.`);

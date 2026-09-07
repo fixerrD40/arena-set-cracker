@@ -1,6 +1,7 @@
 import { Injectable, Injector } from '@angular/core';
 import { PlatformContext } from './platform.contract';
 import { isElectronRenderer } from './desktop-bridge';
+import { VaultStore } from '../services/vault/vault.store';
 
 @Injectable({ providedIn: 'root' })
 export class PlatformOrchestrationService {
@@ -11,22 +12,10 @@ export class PlatformOrchestrationService {
   }
 
   public async initializePlatformContext(injector: Injector): Promise<void> {
-    const isElectron = this.isElectronEnvironment();
-
-    if (isElectron) {
-      // Modern Web-Standard async import splits Electron out of web bundles
-      const { ElectronDataWire } = await import('../services/data-wire/electron.data-wire');
-      this.context = {
-        isElectron: true,
-        dataWire: injector.get(ElectronDataWire)
-      };
-    } else {
-      const { CloudDataWire } = await import('../services/data-wire/cloud.data-wire');
-      this.context = {
-        isElectron: false,
-        dataWire: injector.get(CloudDataWire)
-      };
-    }
+    this.context = {
+      isElectron: this.isElectronEnvironment(),
+      dataWire: injector.get(VaultStore)
+    };
   }
 
   public getContext(): PlatformContext {

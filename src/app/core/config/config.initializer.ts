@@ -1,7 +1,7 @@
 import { inject, Injector } from '@angular/core';
 import { AppConfigService } from './config.service';
 import { SyncService } from '../services/sync.service';
-import { SQLITE_ENGINE_TOKEN } from '../sqlite/sqlite.engine';
+import { VAULT_ENGINE_TOKEN } from '../vault/vault.engine';
 
 /** Loads config, bootstraps the vault engine, then starts the sync listener. */
 export function runConfigAndStorageInitialization(): Promise<void> {
@@ -15,13 +15,9 @@ export function runConfigAndStorageInitialization(): Promise<void> {
       const runtimeConfig = await configService.load();
       console.log(`[ConfigInitializer] Settings loaded. Server: ${runtimeConfig.baseUrl}`);
 
-      const sqliteEngine = injector.get(SQLITE_ENGINE_TOKEN);
-      console.log(
-        runtimeConfig.isElectron
-          ? '[ConfigInitializer] Bootstrapping desktop storage...'
-          : '[ConfigInitializer] Bootstrapping browser WASM storage...'
-      );
-      await sqliteEngine.bootstrap(injector);
+      const vaultEngine = injector.get(VAULT_ENGINE_TOKEN);
+      console.log(`[ConfigInitializer] Bootstrapping vault (${runtimeConfig.platform})...`);
+      await vaultEngine.bootstrap(injector);
 
       const syncService = injector.get(SyncService);
       syncService.initializeEngine();
