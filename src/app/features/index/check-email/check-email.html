@@ -1,0 +1,46 @@
+<div class="wrapper">
+  <mat-card appearance="raised">
+    <h2 class="card-title">Check your email</h2>
+
+    <p class="description-text">
+      @if (fromUnverifiedLogin) {
+        That account exists but is not confirmed yet.
+        @if (email) {
+          Use the link we sent to <strong>{{ email }}</strong>, or resend below.
+        } @else {
+          Open the confirmation link from your inbox, or resend below.
+        }
+      } @else if (email) {
+        We sent a confirmation link to <strong>{{ email }}</strong>.
+        Open it on this device to finish linking cloud sync.
+      } @else {
+        We sent a confirmation link to your inbox.
+        Open it on this device to finish linking cloud sync.
+      }
+    </p>
+
+    @if (resent) {
+      <div class="success-banner">
+        If that address still needs verification, another link is on the way.
+      </div>
+    }
+
+    @if (error) {
+      <div class="error-banner">{{ error }}</div>
+    }
+
+    <div class="actions-panel">
+      <button mat-stroked-button type="button" [disabled]="isLoading || !email" (click)="resend()">
+        @if (isLoading) {
+          <mat-spinner diameter="20" color="accent" class="inline-spinner"></mat-spinner>
+        } @else {
+          <span>Resend link</span>
+        }
+      </button>
+    </div>
+
+    <p class="helper-text">
+      Already confirmed? <a routerLink="/login">Sign in</a>
+    </p>
+  </mat-card>
+</div>

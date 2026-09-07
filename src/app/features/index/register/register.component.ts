@@ -7,10 +7,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { switchMap } from 'rxjs/operators';
 import { UserProfileService } from '../../../core/services/user-profile.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { SetService } from '../../../core/services/set.service';
 import { MatIconModule } from '@angular/material/icon';
 
 @Component({
@@ -33,7 +31,6 @@ import { MatIconModule } from '@angular/material/icon';
 export class RegisterComponent implements OnInit {
   private readonly userProfileService = inject(UserProfileService);
   private readonly authService = inject(AuthService);
-  private readonly setService = inject(SetService);
   private readonly router = inject(Router);
 
   public readonly form = new FormGroup({
@@ -74,29 +71,16 @@ export class RegisterComponent implements OnInit {
         password: password!,
         ...(chosenName ? { username: chosenName } : {})
       })
-      .pipe(
-        switchMap((response: { token: string; displayName: string }) => {
-          const cloudName = (response.displayName || chosenName).trim();
-          const link$ = this.hasLocalProfile
-            ? this.userProfileService.linkLocalProfileToCloud(
-                response.token,
-                cloudName || undefined
-              )
-            : this.userProfileService.restoreCloudIdentity({
-                token: response.token,
-                name: cloudName || email!.split('@')[0] || 'Player'
-              });
-          return link$.pipe(switchMap(() => this.setService.hydrateFromCloudOnce()));
-        })
-      )
       .subscribe({
         next: () => {
           this.isLoading = false;
-          this.router.navigate(['/library']);
+          this.router.navigate(['/check-email'], {
+            queryParams: { email: email! }
+          });
         },
         error: (err) => {
           this.isLoading = false;
-          console.error('[Register] Failed to establish cloud session:', err);
+          console.error('[Register] Failed to establish cloud account:', err);
           this.errorMessage =
             err?.message || 'Registration request failed. Please verify your credentials.';
         }

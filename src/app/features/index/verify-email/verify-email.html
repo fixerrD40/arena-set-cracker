@@ -1,0 +1,18 @@
+<div class="wrapper">
+  <mat-card appearance="raised">
+    <h2 class="card-title">Confirming email</h2>
+
+    @if (isLoading) {
+      <div class="actions-panel center-action">
+        <mat-spinner diameter="36" color="accent"></mat-spinner>
+      </div>
+      <p class="description-text">Finishing your cloud account…</p>
+    } @else if (error) {
+      <div class="error-banner">{{ error }}</div>
+      <p class="helper-text">
+        Need a new link? <a routerLink="/check-email">Resend verification</a>.
+        If you already confirmed, <a routerLink="/login">sign in</a>.
+      </p>
+    }
+  </mat-card>
+</div>

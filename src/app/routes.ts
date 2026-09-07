@@ -39,6 +39,16 @@ export const routes: Routes = [
     loadComponent: () => import('./features/index/register/register.component').then(m => m.RegisterComponent)
   },
   {
+    path: 'check-email',
+    loadComponent: () =>
+      import('./features/index/check-email/check-email.component').then((m) => m.CheckEmailComponent)
+  },
+  {
+    path: 'verify-email',
+    loadComponent: () =>
+      import('./features/index/verify-email/verify-email.component').then((m) => m.VerifyEmailComponent)
+  },
+  {
     path: 'request-password-reset',
     loadComponent: () =>
       import('./features/index/request-password-reset/request-password-reset.component').then(

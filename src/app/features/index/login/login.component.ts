@@ -73,6 +73,12 @@ export class LoginComponent {
       },
       error: (err) => {
         this.isLoading = false;
+        if (err.message === 'EMAIL_UNVERIFIED') {
+          this.router.navigate(['/check-email'], {
+            queryParams: { email: email!, reason: 'unverified' }
+          });
+          return;
+        }
         this.error = err.message || 'Invalid email address or password configuration.';
       }
     });

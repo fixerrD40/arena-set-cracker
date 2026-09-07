@@ -9,6 +9,11 @@ export interface CloudSessionResponse {
   displayName: string;
 }
 
+/** Register accepts the account but withholds a session until email confirm. */
+export interface RegistrationPendingResponse {
+  displayName: string;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -42,18 +47,32 @@ export class AuthService {
       );
   }
 
-  /** Links a local offline profile to the cloud via email + password (+ optional display name as username). */
+  /** Creates an unverified cloud account; session comes from verify-email. */
   public claimOfflineAccount(credentials: {
     email: string;
     password: string;
     username?: string;
-  }): Observable<CloudSessionResponse> {
+  }): Observable<RegistrationPendingResponse> {
     return this.http
-      .post<CloudSessionResponse>(`${this.authUrl}/register`, credentials)
+      .post<RegistrationPendingResponse>(`${this.authUrl}/register`, credentials)
+      .pipe(catchError(this.handleError));
+  }
+
+  public verifyEmail(token: string): Observable<CloudSessionResponse> {
+    return this.http
+      .post<CloudSessionResponse>(`${this.authUrl}/verify-email`, { token })
       .pipe(
         tap(() => this.isAuthenticatedSubject.next(true)),
         catchError(this.handleError)
       );
+  }
+
+  public resendVerification(email: string): Observable<void> {
+    return this.http
+      .post<void>(`${this.authUrl}/resend-verification`, email, {
+        headers: { 'Content-Type': 'text/plain' },
+      })
+      .pipe(catchError(this.handleError));
   }
 
   public requestPasswordReset(email: string): Observable<void> {
@@ -76,6 +95,14 @@ export class AuthService {
 
   private handleError(error: HttpErrorResponse): Observable<never> {
     console.error('[AuthService API Error]:', error.message || error);
+    if (error.status === 403) {
+      return throwError(
+        () => new Error('EMAIL_UNVERIFIED')
+      );
+    }
+    if (error.status === 409) {
+      return throwError(() => new Error('An account with that email already exists.'));
+    }
     return throwError(() => new Error(error.error?.message || 'Authentication network request failed.'));
   }
 }

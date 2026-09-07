@@ -118,7 +118,7 @@ export class UserProfileService {
     );
   }
 
-  /** Cold restore from login / register response (overwrite singleton config row). */
+  /** Cold restore from login / verify: upsert the singleton system_config row. */
   public restoreCloudIdentity(serverPayload: { token: string; name: string }): Observable<void> {
     const restoredProfileRow = {
       id: 'active_user',
@@ -135,7 +135,13 @@ export class UserProfileService {
       lastSyncTimestamp: restoredProfileRow.lastSyncTimestamp
     };
 
-    return this.vault.insert(systemConfig, restoredProfileRow).pipe(
+    // Browser already has active_user (Anonymous); insert alone hits UNIQUE.
+    return this.vault.fetchRecord(systemConfig, 'active_user').pipe(
+      switchMap((existing) =>
+        existing
+          ? this.vault.update(systemConfig, restoredProfileRow)
+          : this.vault.insert(systemConfig, restoredProfileRow)
+      ),
       tap(() => this.configSubject.next(domainModel)),
       map(() => void 0)
     );
