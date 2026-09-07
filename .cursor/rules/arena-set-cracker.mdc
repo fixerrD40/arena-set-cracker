@@ -22,8 +22,9 @@ Color identity is not capped at two; do not bake guild/dual as the only shape of
 ## Stack map
 
 - Angular 22 standalone + Material
-- Local DB: Drizzle schema → sql.js (browser IndexedDB / Electron file). Empty vault: `public/drizzle/0000_*.sql`. Existing file loads as-is. No startup ALTER / column-ensure. No in-place upgrades until a client is shipped; layout change means wipe `mtg_vault.db` (and the browser IndexedDB key).
-- Platform wiring: `SQLITE_ENGINE_TOKEN`, `DATA_WIRE_TOKEN` (`CloudDataWire` vs `ElectronDataWire`)
+- Local vault: Drizzle schema (`public/drizzle/0000_*.sql` bootstrap). Empty vault applies that SQL; existing DB loads as-is. No startup ALTER / column-ensure. No in-place upgrades until a client is shipped; layout change means wipe `mtg_vault.db` (and the browser IndexedDB key).
+- Persist hosts via `VAULT_ENGINE_TOKEN`: browser = sql.js + IndexedDB (`BrowserVaultEngine`); Electron = `better-sqlite3` in main (`ElectronVaultEngine`); Capacitor = `@capacitor-community/sqlite` (`CapacitorVaultEngine`).
+- Domain I/O: `VaultStore` (local CRUD + enqueue syncable sets/decks). Drain: `SyncService` → NDJSON bulk-sync. Same-DB `sync_queue` outbox.
 - Also: Capacitor mobile, optional cloud API via `src/assets/config.json` (`baseUrl`)
 
 ## Where the brain lives
@@ -38,6 +39,9 @@ Color identity is not capped at two; do not bake guild/dual as the only shape of
 | Shared drag primitives | `shared/drag/drag.utils.ts` |
 | Deck builder card drag zones | `DeckBuilderDrag` |
 | SQLite schema (create only) | `core/sqlite/sqlite.schema.ts`, `public/drizzle/` (`0000` bootstrap) |
+| Local vault CRUD + sync enqueue | `VaultStore` |
+| Outbox drain → server | `SyncService` |
+| Vault host (browser / Electron / Capacitor) | `VAULT_ENGINE_TOKEN` → `BrowserVaultEngine` / `ElectronVaultEngine` / `CapacitorVaultEngine` |
 | Shared CSS shell (auth/forms) | `shared/styles/auth-shell.css`, tokens in `styles.css` |
 | App chrome / content-area bounds | `--app-chrome-height`, `[data-app-content]`, `shared/ui/layout/content-area.ts` |
 
@@ -63,7 +67,7 @@ Comments record durable why that the code does not show. Put session teaching, w
 // Top: whole sidebar. Bottom: lower library row when present.
 
 // GOOD — why these two tokens exist
-// 'unsafe-inline' styles: Angular/Material. wasm-unsafe-eval: sql.js.
+// 'unsafe-inline' styles: Angular/Material. wasm-unsafe-eval: sql.js (browser) / concentration worker.
 ```
 
 ## Tests
