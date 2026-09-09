@@ -69,6 +69,14 @@
   </nav>
 </mat-toolbar>
 
+@if (sessionExpired$ | async) {
+  <p class="browser-persist-banner browser-logout-error" role="alert">
+    Cloud session expired — local work is still here.
+    <a routerLink="/login" (click)="dismissSessionExpired()">Log in</a>
+    again to sync.
+  </p>
+}
+
 @if (isBrowserClient) {
   @if (logoutNeedsChoice) {
     <p class="browser-persist-banner browser-logout-error" role="alert">

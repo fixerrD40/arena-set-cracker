@@ -33,6 +33,7 @@ export class AppComponent implements OnDestroy {
   public readonly userProfileService = inject(UserProfileService);
 
   protected readonly profile$ = this.userProfileService.config$;
+  protected readonly sessionExpired$ = this.userProfileService.sessionExpired$;
   protected readonly workspace$ = this.setService.activeContext$;
   protected readonly activeDeck$ = this.deckService.activeDeck$;
 
@@ -174,5 +175,9 @@ export class AppComponent implements OnDestroy {
     this.logoutNeedsChoice = false;
     this.logoutReconnectSub?.unsubscribe();
     this.logoutReconnectSub = undefined;
+  }
+
+  public dismissSessionExpired(): void {
+    this.userProfileService.dismissSessionExpired();
   }
 }

@@ -1,6 +1,6 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, from } from 'rxjs';
 import { toArray, switchMap, map } from 'rxjs/operators';
 import { AppConfigService } from '../config/config.service';
 import { UserProfileService } from './user-profile.service';
@@ -47,8 +47,17 @@ export class BackendService {
             headers,
             body
           })
-            .then((response) => {
+            .then(async (response) => {
               if (!response.ok) {
+                if (sessionToken && response.status === 401) {
+                  await new Promise<void>((resolve) => {
+                    this.injector.get(UserProfileService).clearExpiredCloudSession().subscribe({
+                      next: () => resolve(),
+                      error: () => resolve()
+                    });
+                  });
+                  throw new Error('SESSION_EXPIRED');
+                }
                 throw new Error(
                   `[BackendService] Bulk outbox ingest failed with status: ${response.status}`
                 );

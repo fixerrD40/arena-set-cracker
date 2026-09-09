@@ -121,6 +121,9 @@ export class SyncService {
         }),
         catchError((err) => {
           console.error('[SyncService] Background transfer terminated.', err);
+          if (err?.message === 'SESSION_EXPIRED') {
+            return of(void 0);
+          }
           if (softFail) return of(void 0);
           return throwError(() => err);
         })

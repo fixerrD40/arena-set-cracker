@@ -26,6 +26,10 @@ export class UserProfileService {
   private readonly configSubject = new BehaviorSubject<UserProfile | null>(null);
   public readonly config$ = this.configSubject.asObservable();
 
+  private readonly sessionExpiredSubject = new BehaviorSubject<boolean>(false);
+  /** True after cloud rejected our JWT; local vault kept. */
+  public readonly sessionExpired$ = this.sessionExpiredSubject.asObservable();
+
   public readonly displayName$ = this.config$.pipe(map(c => c?.displayName || null));
   public readonly isCloudSynced$ = this.config$.pipe(map(c => !!c?.isCloudSynced));
   public readonly lastSync$ = this.config$.pipe(map(c => c?.lastSyncTimestamp || null));
@@ -113,7 +117,10 @@ export class UserProfileService {
     const dbPayload = mapProfileToInsert(updatedProfile);
 
     return this.vault.update(systemConfig, dbPayload).pipe(
-      tap(() => this.configSubject.next(updatedProfile)),
+      tap(() => {
+        this.configSubject.next(updatedProfile);
+        this.sessionExpiredSubject.next(false);
+      }),
       map(() => void 0)
     );
   }
@@ -142,7 +149,10 @@ export class UserProfileService {
           ? this.vault.update(systemConfig, restoredProfileRow)
           : this.vault.insert(systemConfig, restoredProfileRow)
       ),
-      tap(() => this.configSubject.next(domainModel)),
+      tap(() => {
+        this.configSubject.next(domainModel);
+        this.sessionExpiredSubject.next(false);
+      }),
       map(() => void 0)
     );
   }
@@ -169,16 +179,58 @@ export class UserProfileService {
     return this.configSubject.getValue();
   }
 
+  /**
+   * Drop a dead cloud JWT but keep the local profile/vault.
+   * Sets sessionExpired$ so the chrome can ask them to log in again.
+   */
+  public clearExpiredCloudSession(): Observable<void> {
+    const current = this.getSnapshot();
+    if (!current?.sessionToken) {
+      this.sessionExpiredSubject.next(true);
+      this.authService.clearAuthenticationState();
+      return of(void 0);
+    }
+
+    const updatedProfile: UserProfile = {
+      ...current,
+      sessionToken: null,
+      isCloudSynced: false
+    };
+    const dbPayload = mapProfileToInsert(updatedProfile);
+
+    return this.vault.update(systemConfig, dbPayload).pipe(
+      tap(() => {
+        this.configSubject.next(updatedProfile);
+        this.authService.clearAuthenticationState();
+        this.sessionExpiredSubject.next(true);
+      }),
+      map(() => void 0),
+      catchError((err) => {
+        console.error('[UserProfileService] Failed to clear expired session:', err);
+        this.configSubject.next(updatedProfile);
+        this.authService.clearAuthenticationState();
+        this.sessionExpiredSubject.next(true);
+        return of(void 0);
+      })
+    );
+  }
+
+  public dismissSessionExpired(): void {
+    this.sessionExpiredSubject.next(false);
+  }
+
   public clearConfig(): Observable<void> {
     return this.vault.delete(systemConfig, 'active_user').pipe(
       tap(() => {
         this.configSubject.next(null);
         this.authService.clearAuthenticationState();
+        this.sessionExpiredSubject.next(false);
       }),
       map(() => void 0),
       catchError(() => {
         this.configSubject.next(null);
         this.authService.clearAuthenticationState();
+        this.sessionExpiredSubject.next(false);
         return of(void 0);
       })
     );
