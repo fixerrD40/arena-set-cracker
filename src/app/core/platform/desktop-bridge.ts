@@ -11,7 +11,7 @@ export interface DesktopBridge {
   artExists(relativePath: string): Promise<boolean>;
   artDownload(url: string, destinationPath: string): Promise<void>;
   artRemoveDir(relativePath: string): Promise<void>;
-  drizzleBootstrapSql(): Promise<string>;
+  vaultMigrate(): Promise<null>;
 
   vaultOpen(fileName: string): Promise<{ isNew: boolean }>;
   vaultExecSync(sql: string): void;

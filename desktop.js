@@ -1,4 +1,5 @@
 const { app, BrowserWindow, session, protocol, net, ipcMain } = require('electron');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -140,23 +141,74 @@ function assertCachedArtPath(relativePath) {
   return abs;
 }
 
-function readDrizzleBootstrapSql() {
+function resolveDrizzleFolder() {
   const dirs = [
     path.join(process.cwd(), 'public', 'drizzle'),
     path.join(DIST_ROOT, 'drizzle')
   ];
   for (const dir of dirs) {
-    if (!fs.existsSync(dir)) {
-      continue;
+    if (fs.existsSync(path.join(dir, 'meta', '_journal.json'))) {
+      return dir;
     }
-    const initFile = fs.readdirSync(dir).find((file) => file.startsWith('0000_') && file.endsWith('.sql'));
-    if (!initFile) {
-      continue;
-    }
-    const sql = fs.readFileSync(path.join(dir, initFile), 'utf8');
-    return sql.replace(/-->\s*statement-breakpoint/g, '');
   }
-  throw new Error('[desktop] Missing drizzle bootstrap SQL.');
+  throw new Error('[desktop] Missing drizzle migrations folder.');
+}
+
+function sha256Hex(text) {
+  return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function readJournalEntries(folder) {
+  const journal = JSON.parse(fs.readFileSync(path.join(folder, 'meta', '_journal.json'), 'utf8'));
+  return [...(journal.entries || [])].sort((a, b) => a.idx - b.idx);
+}
+
+function migrationMetaForEntry(folder, entry) {
+  const query = fs.readFileSync(path.join(folder, `${entry.tag}.sql`), 'utf8');
+  return {
+    hash: sha256Hex(query),
+    folderMillis: entry.when
+  };
+}
+
+/** Seed __drizzle_migrations for vaults created before the ledger existed. */
+function baselineLegacyDrizzleMigrations(folder) {
+  const db = requireVaultDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS __drizzle_migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash text NOT NULL,
+      created_at numeric
+    )
+  `);
+  const last = db.prepare(
+    'SELECT hash FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 1'
+  ).get();
+  if (last) {
+    return;
+  }
+  const sets = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sets'`
+  ).get();
+  if (!sets) {
+    return;
+  }
+  const entries = readJournalEntries(folder);
+  if (!entries.length) {
+    return;
+  }
+  const first = migrationMetaForEntry(folder, entries[0]);
+  db.prepare(
+    'INSERT INTO __drizzle_migrations (hash, created_at) VALUES (?, ?)'
+  ).run(first.hash, first.folderMillis);
+}
+
+function migrateVaultWithDrizzle() {
+  const folder = resolveDrizzleFolder();
+  baselineLegacyDrizzleMigrations(folder);
+  const { drizzle } = require('drizzle-orm/better-sqlite3');
+  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
+  migrate(drizzle(requireVaultDb()), { migrationsFolder: folder });
 }
 
 function registerIpc() {
@@ -199,7 +251,10 @@ function registerIpc() {
     }
   });
 
-  ipcMain.handle('desktop:drizzleBootstrapSql', () => readDrizzleBootstrapSql());
+  ipcMain.handle('desktop:vaultMigrate', () => {
+    migrateVaultWithDrizzle();
+    return null;
+  });
 
   ipcMain.handle('desktop:vaultOpen', (_event, fileName) => {
     const abs = assertSqliteFileName(fileName);

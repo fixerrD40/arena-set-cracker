@@ -19,6 +19,12 @@ import {
 } from '../vault/vault-table-sql';
 import { APP_CONFIG } from '../config/config.model';
 import { syncQueue } from './sqlite.schema';
+import {
+  applyMigrationMetas,
+  baselineLegacyDrizzleMigrations,
+  loadMigrationMetasFromFetch,
+  sqlHostFromCapacitor
+} from './vault-migrations';
 
 /**
  * Capacitor vault: native SQLite via @capacitor-community/sqlite.
@@ -60,11 +66,7 @@ export class CapacitorVaultEngine extends VaultEngine {
         );
       }
       await this.db.open();
-
-      const hasSets = await this.db.isTable('sets');
-      if (!hasSets.result) {
-        await this.applyBootstrapSchema();
-      }
+      await this.runVaultMigrations();
       console.log(`[CapacitorVaultEngine] Native vault open: [${this.dbName}].`);
     } catch (error) {
       console.error('[CapacitorVaultEngine] Boot breakdown:', error);
@@ -177,8 +179,18 @@ export class CapacitorVaultEngine extends VaultEngine {
     table: SQLiteTable<any>,
     row: Record<string, unknown>
   ): Record<string, unknown> {
-    if (getTableName(table) === 'decks' && row['createdAt'] === undefined) {
-      return { ...row, createdAt: new Date().toISOString() };
+    if (getTableName(table) === 'decks') {
+      const next = { ...row };
+      if (next['createdAt'] === undefined) {
+        next['createdAt'] = new Date().toISOString();
+      }
+      if (next['updatedAt'] === undefined) {
+        next['updatedAt'] = (next['createdAt'] as string) || new Date().toISOString();
+      }
+      return next;
+    }
+    if (getTableName(table) === 'sets' && row['updatedAt'] === undefined) {
+      return { ...row, updatedAt: new Date().toISOString() };
     }
     return row;
   }
@@ -190,27 +202,12 @@ export class CapacitorVaultEngine extends VaultEngine {
     return this.db;
   }
 
-  private async applyBootstrapSchema(): Promise<void> {
-    const journalResponse = await fetch('drizzle/meta/_journal.json');
-    if (!journalResponse.ok) {
-      throw new Error('Drizzle journal missing from app assets.');
-    }
-
-    const journal = await journalResponse.json();
-    const tag = journal?.entries?.[0]?.tag;
-    if (!tag) {
-      throw new Error('Drizzle journal has no initial migration tag.');
-    }
-
-    const response = await fetch(`drizzle/${tag}.sql`);
-    if (!response.ok) {
-      throw new Error(`Schema migration file missing: drizzle/${tag}.sql`);
-    }
-
-    const ddlStatementsScript = await response.text();
-    const cleaned = ddlStatementsScript.replace(/-->\s*statement-breakpoint/g, '');
-    await this.requireDb().execute(cleaned);
-    console.log(`[CapacitorVaultEngine] Schema initialized via: [${tag}.sql].`);
+  private async runVaultMigrations(): Promise<void> {
+    const db = this.requireDb();
+    const host = sqlHostFromCapacitor(db);
+    const migrations = await loadMigrationMetasFromFetch();
+    await baselineLegacyDrizzleMigrations(host, migrations);
+    await applyMigrationMetas(host, migrations);
   }
 
   private rows(values: any[] | undefined): Record<string, unknown>[] {

@@ -36,17 +36,13 @@ export class ElectronVaultEngine extends VaultEngine {
 
     const fileName = runtimeConfig.sqliteDbName.replace(/^file:/, '');
     const desktop = getDesktopBridge();
-    if (!desktop?.vaultOpen) {
+    if (!desktop?.vaultOpen || !desktop.vaultMigrate) {
       throw new Error('[ElectronVaultEngine] Desktop vault bridge unavailable.');
     }
 
     try {
-      const { isNew } = await desktop.vaultOpen(fileName);
-      if (isNew) {
-        const ddl = await desktop.drizzleBootstrapSql();
-        desktop.vaultExecSync(ddl);
-        console.log('[ElectronVaultEngine] Schema initialized via drizzle bootstrap SQL.');
-      }
+      await desktop.vaultOpen(fileName);
+      await desktop.vaultMigrate();
       this.ready = true;
       console.log(`[ElectronVaultEngine] better-sqlite3 vault open: [${fileName}].`);
     } catch (rootError) {
@@ -157,8 +153,18 @@ export class ElectronVaultEngine extends VaultEngine {
     table: SQLiteTable<any>,
     row: Record<string, unknown>
   ): Record<string, unknown> {
-    if (getTableName(table) === 'decks' && row['createdAt'] === undefined) {
-      return { ...row, createdAt: new Date().toISOString() };
+    if (getTableName(table) === 'decks') {
+      const next = { ...row };
+      if (next['createdAt'] === undefined) {
+        next['createdAt'] = new Date().toISOString();
+      }
+      if (next['updatedAt'] === undefined) {
+        next['updatedAt'] = (next['createdAt'] as string) || new Date().toISOString();
+      }
+      return next;
+    }
+    if (getTableName(table) === 'sets' && row['updatedAt'] === undefined) {
+      return { ...row, updatedAt: new Date().toISOString() };
     }
     return row;
   }

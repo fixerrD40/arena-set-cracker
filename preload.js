@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('desktop', {
   artDownload: (url, destinationPath) =>
     ipcRenderer.invoke('desktop:artDownload', url, destinationPath),
   artRemoveDir: (relativePath) => ipcRenderer.invoke('desktop:artRemoveDir', relativePath),
-  drizzleBootstrapSql: () => ipcRenderer.invoke('desktop:drizzleBootstrapSql'),
+  vaultMigrate: () => ipcRenderer.invoke('desktop:vaultMigrate'),
 
   vaultOpen: (fileName) => ipcRenderer.invoke('desktop:vaultOpen', fileName),
   vaultExecSync: (sql) => unwrapSync(ipcRenderer.sendSync('desktop:vaultExecSync', sql)),

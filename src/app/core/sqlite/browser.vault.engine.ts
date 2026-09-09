@@ -17,6 +17,11 @@ import {
   sqlJsSelectById,
   sqlJsUpdateRowById
 } from './browser-sqljs-vault-crud';
+import {
+  baselineLegacyDrizzleMigrations,
+  loadMigrationMetasFromFetch,
+  migrateDrizzleSqlite
+} from './vault-migrations';
 
 @Injectable({
   providedIn: 'root'
@@ -65,8 +70,8 @@ export class BrowserVaultEngine extends VaultEngine {
       this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
       this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
 
+      await this.runVaultMigrations();
       if (!savedBinary) {
-        await this.generateWebDatabaseSchema(this.rawSqliteClient);
         await this.commitSnapshotToIndexedDb(dbKey);
       }
       console.log('[BrowserVaultEngine] Browser web storage sandbox successfully active.');
@@ -143,7 +148,7 @@ export class BrowserVaultEngine extends VaultEngine {
     this.rawSqliteClient = new SQL.Database();
     this.rawSqliteClient.run('PRAGMA foreign_keys = ON;');
     this.cachedDbInstance = drizzle(this.rawSqliteClient, { schema: MySchema });
-    await this.generateWebDatabaseSchema(this.rawSqliteClient);
+    await this.runVaultMigrations();
     const currentDbKey = this.activeDbKey ?? 'arena_cache_mtg_vault.db';
     await this.commitSnapshotToIndexedDb(currentDbKey);
     console.log('[BrowserVaultEngine] Local vault wiped for browser logout.');
@@ -186,31 +191,31 @@ export class BrowserVaultEngine extends VaultEngine {
     }
   }
 
-  private async generateWebDatabaseSchema(db: any): Promise<void> {
-    try {
-      const journalResponse = await fetch('drizzle/meta/_journal.json');
-      if (!journalResponse.ok) {
-        throw new Error('Drizzle journal missing from app assets.');
-      }
-
-      const journal = await journalResponse.json();
-      const tag = journal?.entries?.[0]?.tag;
-      if (!tag) {
-        throw new Error('Drizzle journal has no initial migration tag.');
-      }
-
-      const response = await fetch(`drizzle/${tag}.sql`);
-      if (!response.ok) {
-        throw new Error(`Schema migration file missing: drizzle/${tag}.sql`);
-      }
-
-      const ddlStatementsScript = await response.text();
-      const cleaned = ddlStatementsScript.replace(/-->\s*statement-breakpoint/g, '');
-      db.run(cleaned);
-      console.log(`[BrowserVaultEngine] Schema initialized via: [${tag}.sql].`);
-    } catch (error) {
-      console.error('[BrowserVaultEngine] Could not initialize web DDL rules:', error);
-      throw error;
+  private async runVaultMigrations(): Promise<void> {
+    const raw = this.rawSqliteClient;
+    const drizzleDb = this.cachedDbInstance;
+    if (!raw || !drizzleDb) {
+      throw new Error('[BrowserVaultEngine] No sql.js database for migrations.');
     }
+
+    const host = {
+      exec: (sql: string) => {
+        raw.exec(sql);
+      },
+      query: (sql: string) => {
+        const result = raw.exec(sql) as Array<{ columns: string[]; values: unknown[][] }>;
+        if (!result?.length) {
+          return [];
+        }
+        const { columns, values } = result[0];
+        return values.map((row) =>
+          Object.fromEntries(columns.map((col, i) => [col, row[i]]))
+        );
+      }
+    };
+
+    const migrations = await loadMigrationMetasFromFetch();
+    await baselineLegacyDrizzleMigrations(host, migrations);
+    migrateDrizzleSqlite(drizzleDb, migrations);
   }
 }
