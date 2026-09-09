@@ -4,6 +4,7 @@ import { catchError, map, switchMap, tap } from 'rxjs/operators';
 import { SetService } from './set.service';
 import { MtgCard } from '../../shared/models/card/card';
 import { cloneDeck, DeckStatus, MtgDeck } from '../../shared/models/deck/deck';
+import { touchDeckUpdatedAt } from '../../shared/models/deck/deck.mappers';
 import { deckCopyLimit } from '../../shared/models/deck/deck.copy-limit';
 import { decks, deckCards } from '../sqlite/sqlite.schema';
 import { VaultStore } from './vault/vault.store';
@@ -166,11 +167,10 @@ export class DeckService {
     };
 
     return this.persistDeck(freshDeck, { isNew: true }).pipe(
-      tap(() => {
+      tap((saved) => {
         this.setService.loadSetWorkspace(setId);
-        this.setActiveDeck(freshDeck);
-      }),
-      map(() => freshDeck)
+        this.setActiveDeck(saved);
+      })
     );
   }
 
@@ -179,11 +179,10 @@ export class DeckService {
    */
   public insertNewDeckPayload(deck: MtgDeck): Observable<MtgDeck> {
     return this.persistDeck(deck, { isNew: true }).pipe(
-      tap(() => {
-        this.setService.upsertDeckInWorkspaceMemory(deck);
-        this.setActiveDeck(deck);
-      }),
-      map(() => deck)
+      tap((saved) => {
+        this.setService.upsertDeckInWorkspaceMemory(saved);
+        this.setActiveDeck(saved);
+      })
     );
   }
 
@@ -203,11 +202,11 @@ export class DeckService {
     updated.themes = [...deck.themes, trimmed];
 
     return this.persistDeck(updated, { isNew: false }).pipe(
-      tap(() => {
-        this.setService.updateDeckInWorkspaceMemory(updated);
+      tap((saved) => {
+        this.setService.updateDeckInWorkspaceMemory(saved);
         const active = this.activeDeckSnapshot;
         if (active && String(active.id) === String(deckId)) {
-          this.setActiveDeck(updated);
+          this.setActiveDeck(saved);
         }
       }),
       map(() => void 0)
@@ -230,11 +229,11 @@ export class DeckService {
     updated.themes = deck.themes.filter((entry) => entry !== trimmed);
 
     return this.persistDeck(updated, { isNew: false }).pipe(
-      tap(() => {
-        this.setService.updateDeckInWorkspaceMemory(updated);
+      tap((saved) => {
+        this.setService.updateDeckInWorkspaceMemory(saved);
         const active = this.activeDeckSnapshot;
         if (active && String(active.id) === String(deckId)) {
-          this.setActiveDeck(updated);
+          this.setActiveDeck(saved);
         }
       }),
       map(() => void 0)
@@ -256,11 +255,11 @@ export class DeckService {
     updated.status = status;
 
     return this.persistDeck(updated, { isNew: false }).pipe(
-      tap(() => {
-        this.setService.updateDeckInWorkspaceMemory(updated);
+      tap((saved) => {
+        this.setService.updateDeckInWorkspaceMemory(saved);
         const active = this.activeDeckSnapshot;
         if (active && String(active.id) === String(deckId)) {
-          this.setActiveDeck(updated);
+          this.setActiveDeck(saved);
         }
       }),
       map(() => void 0)
@@ -275,9 +274,9 @@ export class DeckService {
     if (!deckToSave) return of(void 0);
 
     return this.persistDeck(deckToSave, { isNew: false }).pipe(
-      tap(() => {
-        this.setActiveDeck(deckToSave);
-        this.setService.updateDeckInWorkspaceMemory(deckToSave);
+      tap((saved) => {
+        this.setActiveDeck(saved);
+        this.setService.updateDeckInWorkspaceMemory(saved);
       }),
       map(() => void 0),
       catchError((err) => {
@@ -309,17 +308,19 @@ export class DeckService {
 
   /**
    * Writes decks row + replaces deck_cards for that deck id.
+   * Bumps updatedAt so cloud LWW sees this mutation.
    */
   private persistDeck(deck: MtgDeck, options: { isNew: boolean }): Observable<MtgDeck> {
+    const stamped = touchDeckUpdatedAt(deck);
     const writeParent$ = options.isNew
-      ? this.vault.insert(decks, deck)
-      : this.vault.update(decks, deck);
+      ? this.vault.insert(decks, stamped)
+      : this.vault.update(decks, stamped);
 
     return writeParent$.pipe(
-      switchMap(() => this.vault.deleteWhere(deckCards, 'deckId', deck.id)),
+      switchMap(() => this.vault.deleteWhere(deckCards, 'deckId', stamped.id)),
       switchMap(() => {
-        const relationsPayloads = Array.from(deck.cards.entries()).map(([cardId, qty]) => ({
-          deckId: deck.id,
+        const relationsPayloads = Array.from(stamped.cards.entries()).map(([cardId, qty]) => ({
+          deckId: stamped.id,
           cardId,
           quantity: qty
         }));
@@ -328,9 +329,9 @@ export class DeckService {
         return this.vault.insertBulk(deckCards, relationsPayloads);
       }),
       tap(() => {
-        console.log(`[DeckService] Persisted deck "${deck.name}" with ${deck.cards.size} unique card lines.`);
+        console.log(`[DeckService] Persisted deck "${stamped.name}" with ${stamped.cards.size} unique card lines.`);
       }),
-      map(() => deck)
+      map(() => stamped)
     );
   }
 }

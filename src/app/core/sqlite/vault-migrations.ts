@@ -109,7 +109,7 @@ export function sqlHostFromCapacitor(db: SQLiteDBConnection): SqlExecHost {
 /**
  * Pre-seed __drizzle_migrations for vaults that already have schema from before the ledger.
  * Seeds only 0000 when `sets` exists so CREATE TABLE is not re-run.
- * Dev vaults stuck mid-alter: wipe the local DB and let 0000 recreate.
+ * Tip clocks added after that baseline are applied by applyTipClockSchemaPatch (not by rewriting 0000).
  */
 export async function baselineLegacyDrizzleMigrations(
   host: SqlExecHost,

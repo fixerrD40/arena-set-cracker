@@ -77,6 +77,22 @@
   </p>
 }
 
+@if (deckConflicts$ | async; as deckConflicts) {
+  @if (deckConflicts.length > 0) {
+    <div class="browser-persist-banner browser-logout-error deck-conflict-banner" role="alert">
+      <p>
+        {{ deckConflicts.length }} deck{{ deckConflicts.length === 1 ? '' : 's' }} still need a sync
+        choice (both changed since last sync).
+      </p>
+      <p class="deck-conflict-actions">
+        <button type="button" class="banner-text-btn" (click)="reviewFirstDeckConflict()">
+          Review conflicts
+        </button>
+      </p>
+    </div>
+  }
+}
+
 @if (isBrowserClient) {
   @if (logoutNeedsChoice) {
     <p class="browser-persist-banner browser-logout-error" role="alert">

@@ -219,6 +219,36 @@
   text-align: left;
 }
 
+.deck-conflict-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.55rem;
+  padding: 0.15rem 0.35rem 0.35rem;
+  font-size: 0.72rem;
+}
+
+.deck-conflict-label {
+  color: var(--deck-gold);
+  width: 100%;
+}
+
+.deck-conflict-btn {
+  border: 1px solid var(--deck-line);
+  background: transparent;
+  color: var(--deck-fg);
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.deck-conflict-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .deck-themes {
   display: flex;
   flex-wrap: wrap;

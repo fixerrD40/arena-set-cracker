@@ -11,6 +11,7 @@ import {
   hydrateRow
 } from '../../sqlite/sqlite.registry';
 import { toOutboxPayload } from './outbox.payload';
+import { nowIso } from '../../../shared/models/sync-timestamp';
 
 /** Local vault CRUD; enqueues syncable sets/decks for SyncService. */
 @Injectable({
@@ -119,7 +120,7 @@ export class VaultStore {
           return this.sync.enqueue({
             entityType,
             action: 'DELETE',
-            payload: { id }
+            payload: { id, updatedAt: nowIso() }
           }).pipe(map(() => void 0));
         }
         return of(void 0);
@@ -162,6 +163,52 @@ export class VaultStore {
     return from(this.vaultEngine.selectAll(table, contextId)).pipe(
       map((rows) => rows.map((row) => hydrateRow<TOutput>(table, row))),
       catchError((err) => throwError(() => err))
+    );
+  }
+
+  /**
+   * Persist without outbox enqueue (hydrate / conflict apply / sync-base stamp).
+   */
+  public writeLocal<TInput = any, TOutput = any>(
+    table: SQLiteTable<any>,
+    domainModel: TInput,
+    mode: 'insert' | 'update'
+  ): Observable<TOutput> {
+    const recordId = (domainModel as { id?: string })?.id;
+    if (!recordId && mode === 'update') {
+      return throwError(() => new Error('[VaultStore] writeLocal update needs id.'));
+    }
+
+    const dbPayload = serializePayload(table, domainModel);
+    const write$ =
+      mode === 'insert'
+        ? from(this.vaultEngine.insertRows(table, [dbPayload]))
+        : from(this.vaultEngine.updateRowById(table, recordId!, dbPayload));
+
+    return write$.pipe(
+      concatMap(() => {
+        this.flush();
+        return of(domainModel as unknown as TOutput);
+      }),
+      catchError((err) => throwError(() => err))
+    );
+  }
+
+  /** Stamp merge-base tip after a successful bulk-sync row (no outbox). */
+  public markMergeBaseUpdatedAt(
+    table: SQLiteTable<any>,
+    id: string,
+    mergeBaseUpdatedAt: string
+  ): Observable<void> {
+    return this.fetchRecord<Record<string, unknown>>(table, id).pipe(
+      concatMap((existing) => {
+        if (!existing) {
+          return of(void 0);
+        }
+        return this.writeLocal(table, { ...existing, mergeBaseUpdatedAt }, 'update').pipe(
+          map(() => void 0)
+        );
+      })
     );
   }
 

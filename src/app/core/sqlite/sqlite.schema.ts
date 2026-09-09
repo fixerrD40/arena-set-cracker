@@ -17,7 +17,11 @@ export const sets = sqliteTable('sets', {
   code: text('code').notNull().unique(), // e.g., "dsk", "blb", "ltr"
   name: text('name').notNull(),
   iconSvgUri: text('icon_svg_uri').notNull(),
-  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`)
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  // Conflict clock for cloud sync (also carried in JSONB body).
+  updatedAt: text('updated_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  // Local merge-base tip for classifyHydrate (not in outbox body).
+  mergeBaseUpdatedAt: text('merge_base_updated_at')
 });
 
 export const cards = sqliteTable('cards', {
@@ -45,6 +49,8 @@ export const decks = sqliteTable('decks', {
   notes: text('notes').notNull().default(''),
   coverCardId: text('cover_card_id').notNull().default(''),
   createdAt: text('created_at').notNull().$default(() => new Date().toISOString()),
+  updatedAt: text('updated_at').notNull().$default(() => new Date().toISOString()),
+  mergeBaseUpdatedAt: text('merge_base_updated_at'),
 });
 
 export const deckCards = sqliteTable('deck_cards', {
@@ -54,6 +60,14 @@ export const deckCards = sqliteTable('deck_cards', {
 }, (table) => [
   primaryKey({ columns: [table.deckId, table.cardId] }),
 ]);
+
+/** Parked cloud tip when local and cloud both moved past mergeBaseUpdatedAt (decks). */
+export const syncConflicts = sqliteTable('sync_conflicts', {
+  id: text('id').primaryKey(), // deck id
+  theirsPayload: text('theirs_payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+  theirsUpdatedAt: text('theirs_updated_at'),
+  createdAt: text('created_at').notNull().$default(() => new Date().toISOString()),
+});
 
 // Offline sync outbox; unique per entity so later ops squash earlier ones
 export const syncQueue = sqliteTable('sync_queue', {
@@ -72,6 +86,7 @@ export type SetRow = typeof sets.$inferSelect;
 export type CardRow = typeof cards.$inferSelect;
 export type DeckRow = typeof decks.$inferSelect;
 export type DeckCardRow = typeof deckCards.$inferSelect;
+export type SyncConflictRow = typeof syncConflicts.$inferSelect;
 export type SyncQueueRow = typeof syncQueue.$inferSelect;
 
 export type SystemConfigInsert = typeof systemConfig.$inferInsert;
@@ -79,4 +94,5 @@ export type SetInsert = typeof sets.$inferInsert;
 export type CardInsert = typeof cards.$inferInsert;
 export type DeckInsert = typeof decks.$inferInsert;
 export type DeckCardInsert = typeof deckCards.$inferInsert;
+export type SyncConflictInsert = typeof syncConflicts.$inferInsert;
 export type SyncQueueInsert = typeof syncQueue.$inferInsert;

@@ -1,5 +1,6 @@
 import { MtgDeck, CloudDeckPayload, coerceDeckStatus, coerceDeckThemes } from './deck';
 import { DeckRow, DeckCardRow, DeckInsert } from '../../../core/sqlite/sqlite.schema';
+import { nowIso } from '../sync-timestamp';
 
 /** Joins a deck row with deck_cards lines into a domain Map. */
 export function mapRowToDeck(
@@ -20,7 +21,9 @@ export function mapRowToDeck(
     coverCardId: deckRow.coverCardId || '',
     status: coerceDeckStatus(deckRow.status),
     themes: coerceDeckThemes(deckRow.themes),
-    cards: cardMap
+    cards: cardMap,
+    updatedAt: deckRow.updatedAt?.trim() || undefined,
+    mergeBaseUpdatedAt: deckRow.mergeBaseUpdatedAt?.trim() || undefined
   };
 }
 
@@ -33,8 +36,9 @@ export function mapDeckToInsert(deck: MtgDeck): DeckInsert {
     notes: deck.notes,
     coverCardId: deck.coverCardId || '',
     themes: [...deck.themes],
-    status: deck.status
-    // createdAt omitted; column $default fills it
+    status: deck.status,
+    updatedAt: deck.updatedAt?.trim() || nowIso(),
+    mergeBaseUpdatedAt: deck.mergeBaseUpdatedAt?.trim() || null
   };
 }
 
@@ -55,7 +59,8 @@ export function mapJsonToDeck(payload: CloudDeckPayload): MtgDeck {
     coverCardId: payload.coverCardId || '',
     status: coerceDeckStatus(payload.status),
     themes: coerceDeckThemes(payload.themes),
-    cards: cardMap
+    cards: cardMap,
+    updatedAt: payload.updatedAt?.trim() || undefined
   };
 }
 
@@ -68,6 +73,12 @@ export function mapDeckToJson(deck: MtgDeck): CloudDeckPayload {
     status: deck.status,
     themes: [...deck.themes],
     coverCardId: deck.coverCardId,
-    cards: Object.fromEntries(deck.cards)
+    cards: Object.fromEntries(deck.cards),
+    updatedAt: deck.updatedAt?.trim() || nowIso()
   };
+}
+
+/** Stamp a new LWW clock for a local mutation (create / save / card-line edit). */
+export function touchDeckUpdatedAt(deck: MtgDeck): MtgDeck {
+  return { ...deck, updatedAt: nowIso() };
 }

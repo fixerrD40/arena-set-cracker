@@ -12,7 +12,9 @@ CREATE TABLE `sets` (
 	`code` text NOT NULL,
 	`name` text NOT NULL,
 	`icon_svg_uri` text NOT NULL,
-	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) NOT NULL
+	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) NOT NULL,
+	`updated_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) NOT NULL,
+	`merge_base_updated_at` text
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `sets_code_unique` ON `sets` (`code`);
@@ -43,6 +45,8 @@ CREATE TABLE `decks` (
 	`notes` text DEFAULT '' NOT NULL,
 	`cover_card_id` text DEFAULT '' NOT NULL,
 	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	`merge_base_updated_at` text,
 	FOREIGN KEY (`set_id`) REFERENCES `sets`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -53,6 +57,13 @@ CREATE TABLE `deck_cards` (
 	PRIMARY KEY(`deck_id`, `card_id`),
 	FOREIGN KEY (`deck_id`) REFERENCES `decks`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`card_id`) REFERENCES `cards`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `sync_conflicts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`theirs_payload` text NOT NULL,
+	`theirs_updated_at` text,
+	`created_at` text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `sync_queue` (

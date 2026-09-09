@@ -24,7 +24,9 @@ import {
   serializeSetToJSON
 } from '../../shared/models/set/set.mappers';
 import { mapDeckToJson, mapJsonToDeck, mapRowToDeck } from '../../shared/models/deck/deck.mappers';
+import { classifyHydrate } from '../../shared/models/sync-timestamp';
 import { OutboxEnvelope } from '../vault/vault.engine';
+import { DeckConflictService } from './deck-conflict.service';
 
 /** Live install progress for the install-set screen (card-count downloading). */
 export interface SetInstallProgress {
@@ -53,6 +55,7 @@ export class SetService implements OnDestroy {
   private readonly backend = inject(BackendService);
   private readonly sync = inject(SyncService);
   private readonly config = inject(AppConfigService);
+  private readonly deckConflicts = inject(DeckConflictService);
 
   private rosterSubscription?: Subscription;
   private workspaceSubscription?: Subscription;
@@ -79,7 +82,7 @@ export class SetService implements OnDestroy {
 
   /**
    * Pulls live JSONB documents after login/restore.
-   * Catalog cards stay local (Scryfall); last-write-wins stays on the server.
+   * Catalog cards stay local (Scryfall). Uses mergeBaseUpdatedAt; deck forks park for yours/theirs.
    */
   public hydrateFromCloud(): Observable<void> {
     return forkJoin({
@@ -103,6 +106,7 @@ export class SetService implements OnDestroy {
           )
         )
       ),
+      switchMap(() => this.deckConflicts.refresh()),
       tap(() => this.syncInstalledCache()),
       map(() => void 0),
       catchError((err) => {
@@ -158,7 +162,8 @@ export class SetService implements OnDestroy {
             coverCardId: deckLike.coverCardId || '',
             themes: Array.isArray(deckLike.themes) ? deckLike.themes : [],
             status: deckLike.status || 'concept',
-            createdAt: deckLike.createdAt || new Date().toISOString()
+            createdAt: deckLike.createdAt || new Date().toISOString(),
+            updatedAt: deckLike.updatedAt
           } as DeckRow;
           return mapRowToDeck(asRow, linesByDeckId.get(id) || []);
         });
@@ -405,17 +410,77 @@ export class SetService implements OnDestroy {
 
   private writeHydratedSet(set: MtgSet): Observable<MtgSet> {
     return this.vault.fetchRecord<MtgSet>(sets, set.id).pipe(
-      switchMap((existing) =>
-        existing ? this.vault.update(sets, set) : this.vault.insert(sets, set)
-      )
+      switchMap((existing) => {
+        const decision = classifyHydrate({
+          hasLocal: !!existing,
+          localUpdatedAt: existing?.updatedAt,
+          mergeBaseUpdatedAt: existing?.mergeBaseUpdatedAt,
+          cloudUpdatedAt: set.updatedAt
+        });
+        if (decision === 'keep-yours' || decision === 'conflict' || decision === 'noop') {
+          // Sets: no yours/theirs UI; conflict behaves like keep-yours until push.
+          if (decision === 'noop' && existing && set.updatedAt?.trim()) {
+            return this.vault
+              .writeLocal(
+                sets,
+                { ...existing, mergeBaseUpdatedAt: set.updatedAt.trim() },
+                'update'
+              )
+              .pipe(map(() => existing));
+          }
+          return of(existing!);
+        }
+        const applied: MtgSet = {
+          ...set,
+          mergeBaseUpdatedAt: set.updatedAt?.trim() || existing?.mergeBaseUpdatedAt
+        };
+        const mode = existing ? 'update' : 'insert';
+        return this.vault.writeLocal(sets, applied, mode);
+      })
     );
   }
 
   private persistHydratedDeck(deck: MtgDeck): Observable<MtgDeck> {
     return this.vault.fetchRecord<MtgDeck>(decks, deck.id).pipe(
-      switchMap((existing) =>
-        existing ? this.vault.update(decks, deck) : this.vault.insert(decks, deck)
-      ),
+      switchMap((existing) => {
+        const decision = classifyHydrate({
+          hasLocal: !!existing,
+          localUpdatedAt: existing?.updatedAt,
+          mergeBaseUpdatedAt: existing?.mergeBaseUpdatedAt,
+          cloudUpdatedAt: deck.updatedAt
+        });
+        if (decision === 'keep-yours') {
+          return of(existing!);
+        }
+        if (decision === 'noop') {
+          if (existing && deck.updatedAt?.trim()) {
+            return this.vault
+              .writeLocal(
+                decks,
+                { ...existing, mergeBaseUpdatedAt: deck.updatedAt.trim() },
+                'update'
+              )
+              .pipe(map(() => existing));
+          }
+          return of(existing!);
+        }
+        if (decision === 'conflict') {
+          return this.deckConflicts.parkTheirs(deck).pipe(map(() => existing!));
+        }
+        const applied: MtgDeck = {
+          ...deck,
+          mergeBaseUpdatedAt: deck.updatedAt?.trim() || existing?.mergeBaseUpdatedAt
+        };
+        return this.applyHydratedDeckRows(applied, !!existing);
+      })
+    );
+  }
+
+  private applyHydratedDeckRows(deck: MtgDeck, hadLocal: boolean): Observable<MtgDeck> {
+    const write$ = hadLocal
+      ? this.vault.writeLocal(decks, deck, 'update')
+      : this.vault.writeLocal(decks, deck, 'insert');
+    return write$.pipe(
       switchMap(() => this.vault.deleteWhere(deckCards, 'deckId', deck.id)),
       switchMap(() => {
         const lines = Array.from(deck.cards.entries()).map(([cardId, quantity]) => ({

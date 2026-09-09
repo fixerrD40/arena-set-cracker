@@ -1,0 +1,123 @@
+<div class="conflict-roster">
+  <header class="conflict-roster-head">
+    <div class="conflict-roster-copy">
+      <h1 mat-dialog-title>Decks that need a choice</h1>
+      <p>
+        Both your device and the cloud changed these decks since the last sync. Pick one side for a
+        whole deck, or open Merge to combine cards by hand. Nothing is saved until you lock in —
+        × undoes this whole pass.
+      </p>
+    </div>
+    <button
+      type="button"
+      class="conflict-roster-close"
+      mat-icon-button
+      (click)="dismiss()"
+      [disabled]="committing"
+      aria-label="Cancel all choices and leave conflicts for later"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </header>
+
+  @if (committing) {
+    <p class="conflict-roster-status" role="status">Locking in your choices…</p>
+  }
+
+  <mat-dialog-content>
+    @if (!readyToCommit) {
+      <ul class="conflict-roster-list">
+        @for (row of list; track row.deckId) {
+          <li class="conflict-roster-row">
+            <div class="conflict-roster-meta">
+              <span class="conflict-roster-name">{{ row.name }}</span>
+              @if (row.setId) {
+                <span class="conflict-roster-set">{{ row.setId }}</span>
+              }
+            </div>
+            <div class="conflict-roster-actions">
+              <button
+                mat-button
+                type="button"
+                (click)="acceptYours(row)"
+                [disabled]="committing"
+              >
+                Accept yours
+              </button>
+              <button
+                mat-button
+                type="button"
+                (click)="acceptTheirs(row)"
+                [disabled]="committing"
+              >
+                Accept theirs
+              </button>
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                (click)="merge(row)"
+                [disabled]="committing"
+              >
+                Merge…
+              </button>
+            </div>
+          </li>
+        } @empty {
+          <li class="conflict-roster-empty">No decks left to choose.</li>
+        }
+      </ul>
+
+      @if (stagedRows.length > 0) {
+        <div class="conflict-roster-staged">
+          <h2>Chosen so far</h2>
+          <ul>
+            @for (row of stagedRows; track row.deckId) {
+              <li>
+                <span class="conflict-roster-name">{{ row.name }}</span>
+                <span class="conflict-roster-choice">{{ row.label }}</span>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    } @else {
+      <div class="conflict-roster-confirm" role="region" aria-label="Confirm lock-in">
+        <h2>Lock in these choices?</h2>
+        <p>
+          This becomes the firm version on this device. Sync will catch up in the background. You
+          can still × to abort, or change your choices below.
+        </p>
+        <ul class="conflict-roster-confirm-list">
+          @for (row of stagedRows; track row.deckId) {
+            <li>
+              <span class="conflict-roster-name">{{ row.name }}</span>
+              <span class="conflict-roster-choice">{{ row.label }}</span>
+            </li>
+          }
+        </ul>
+        <div class="conflict-roster-confirm-actions">
+          <button mat-button type="button" (click)="changeChoices()" [disabled]="committing">
+            Change choices
+          </button>
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            (click)="confirmLockIn()"
+            [disabled]="committing"
+          >
+            Lock in
+          </button>
+        </div>
+      </div>
+    }
+  </mat-dialog-content>
+
+  <footer class="conflict-roster-foot">
+    <p>
+      × is a ripcord: it throws away every Accept/Merge in this window and puts you back on the
+      banner with the same conflicts as before.
+    </p>
+  </footer>
+</div>

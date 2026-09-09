@@ -33,6 +33,10 @@ export interface MtgDeck {
   notes: string;
   coverCardId: string;
   cards: Map<string, number>;
+  /** Cloud tip clock; ISO-8601. */
+  updatedAt?: string;
+  /** Local merge-base tip for classifyHydrate. */
+  mergeBaseUpdatedAt?: string;
 }
 
 export function cloneDeck(deck: MtgDeck): MtgDeck {
@@ -53,6 +57,8 @@ export interface CloudDeckPayload {
   notes?: string;
   coverCardId?: string;
   cards?: Record<string, number>;
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 /** One tokenized line from an Arena export. */

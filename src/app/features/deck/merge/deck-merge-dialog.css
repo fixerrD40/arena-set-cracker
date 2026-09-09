@@ -1,0 +1,20 @@
+.deck-merge-dialog {
+  min-height: 70vh;
+  max-height: 90vh;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.deck-merge-dialog .deck-merge-panes {
+  min-height: 55vh;
+}
+
+.deck-merge-dialog h1[mat-dialog-title] {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+  padding: 0;
+}
+
+mat-dialog-content {
+  max-height: none;
+  overflow: auto;
+}

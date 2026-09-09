@@ -1,10 +1,11 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { merge, of, fromEvent, EMPTY, Subscription, Observable, defer, from, throwError } from 'rxjs';
-import { exhaustMap, catchError, map, switchMap, tap } from 'rxjs/operators';
+import { exhaustMap, catchError, map, switchMap, tap, concatMap, toArray } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { BackendService } from './backend.service';
 import { VAULT_ENGINE_TOKEN, OutboxEnvelope } from '../vault/vault.engine';
-import { SyncQueueRow } from '../sqlite/sqlite.schema';
+import { SyncQueueRow, decks, sets } from '../sqlite/sqlite.schema';
+import { VaultStore } from './vault/vault.store';
 
 /** Drains sync_queue to the cloud NDJSON bulk-sync endpoint. */
 @Injectable({
@@ -14,6 +15,7 @@ export class SyncService {
   private readonly auth = inject(AuthService);
   private readonly vault = inject(VAULT_ENGINE_TOKEN);
   private readonly backend = inject(BackendService);
+  private readonly injector = inject(Injector);
 
   private activeSyncSubscription?: Subscription;
   private engineInitialized = false;
@@ -109,6 +111,7 @@ export class SyncService {
           console.log(`[SyncService] Piping ${targetBatchIds.length} operations down the NDJSON channel...`);
 
           return this.backend.streamJsonRecordsToServer(outboxDataStream$).pipe(
+            switchMap(() => this.ackSyncedBases(rawRecords)),
             switchMap(() => {
               if (targetBatchIds.length === 0) return of(void 0);
               return from(this.vault.clearSyncItemsBatch(targetBatchIds));
@@ -129,5 +132,32 @@ export class SyncService {
         })
       );
     });
+  }
+
+  /** After HTTP success, advance merge-base from each upsert payload tip (optimistic; no per-row ack). */
+  private ackSyncedBases(rawRecords: SyncQueueRow[]): Observable<void> {
+    const vaultStore = this.injector.get(VaultStore);
+    return from(rawRecords).pipe(
+      concatMap((row) => {
+        if (row.action === 'DELETE') {
+          return of(void 0);
+        }
+        const payload =
+          typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+        const synced = typeof payload?.updatedAt === 'string' ? payload.updatedAt.trim() : '';
+        if (!synced) {
+          return of(void 0);
+        }
+        if (row.entityType === 'deck') {
+          return vaultStore.markMergeBaseUpdatedAt(decks, row.entityId, synced);
+        }
+        if (row.entityType === 'set') {
+          return vaultStore.markMergeBaseUpdatedAt(sets, row.entityId, synced);
+        }
+        return of(void 0);
+      }),
+      toArray(),
+      map(() => void 0)
+    );
   }
 }

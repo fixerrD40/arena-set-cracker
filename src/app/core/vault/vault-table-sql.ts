@@ -2,7 +2,7 @@ import { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { getTableColumns, getTableName } from 'drizzle-orm';
 
 /** Columns stored as JSON text in SQLite (drizzle `mode: 'json'`). */
-const JSON_SQL_COLUMNS = new Set(['colors', 'themes', 'payload']);
+const JSON_SQL_COLUMNS = new Set(['colors', 'themes', 'payload', 'theirs_payload']);
 
 export function tableSqlName(table: SQLiteTable<any>): string {
   return getTableName(table);

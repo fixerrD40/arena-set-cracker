@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { Router, RouterOutlet, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -10,6 +10,8 @@ import { from, fromEvent, Subscription, switchMap, finalize } from 'rxjs';
 import { UserProfileService } from './core/services/user-profile.service';
 import { SetService } from './core/services/set.service';
 import { DeckService } from './core/services/deck.service';
+import { DeckConflictService } from './core/services/deck-conflict.service';
+import { DeckMergeUi } from './core/services/deck-merge-ui.service';
 import { VAULT_ENGINE_TOKEN } from './core/vault/vault.engine';
 import { BrowserVaultEngine } from './core/sqlite/browser.vault.engine';
 
@@ -25,15 +27,18 @@ import { BrowserVaultEngine } from './core/sqlite/browser.vault.engine';
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrls: ['./app.css']
 })
-export class AppComponent implements OnDestroy {
+export class AppComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly vaultEngine = inject(VAULT_ENGINE_TOKEN);
   protected readonly setService = inject(SetService);
   protected readonly deckService = inject(DeckService);
+  private readonly deckConflictService = inject(DeckConflictService);
+  private readonly deckMergeUi = inject(DeckMergeUi);
   public readonly userProfileService = inject(UserProfileService);
 
   protected readonly profile$ = this.userProfileService.config$;
   protected readonly sessionExpired$ = this.userProfileService.sessionExpired$;
+  protected readonly deckConflicts$ = this.deckConflictService.conflicts$;
   protected readonly workspace$ = this.setService.activeContext$;
   protected readonly activeDeck$ = this.deckService.activeDeck$;
 
@@ -49,6 +54,11 @@ export class AppComponent implements OnDestroy {
 
   /** While held for choice: push on reconnect, never auto-checkout. */
   private logoutReconnectSub?: Subscription;
+
+  public ngOnInit(): void {
+    // Conflicts are parked during hydrate; popup is the resolve surface (not a route).
+    this.deckMergeUi.watchForConflicts();
+  }
 
   public ngOnDestroy(): void {
     this.logoutReconnectSub?.unsubscribe();
@@ -179,5 +189,9 @@ export class AppComponent implements OnDestroy {
 
   public dismissSessionExpired(): void {
     this.userProfileService.dismissSessionExpired();
+  }
+
+  public reviewFirstDeckConflict(): void {
+    this.deckMergeUi.openRoster();
   }
 }

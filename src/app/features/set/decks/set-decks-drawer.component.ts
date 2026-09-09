@@ -24,6 +24,8 @@ import { takeUntil } from 'rxjs/operators';
 
 import { DeckService } from '../../../core/services/deck.service';
 import { SetService } from '../../../core/services/set.service';
+import { DeckConflictService } from '../../../core/services/deck-conflict.service';
+import { DeckMergeUi } from '../../../core/services/deck-merge-ui.service';
 import {
   DECK_STATUSES,
   DECK_STATUS_LABELS,
@@ -48,6 +50,8 @@ import { SetBoardDrag } from '../set-board-drag';
 export class SetDecksDrawerComponent implements OnDestroy {
   private readonly deckService = inject(DeckService);
   private readonly setService = inject(SetService);
+  private readonly deckConflicts = inject(DeckConflictService);
+  private readonly deckMergeUi = inject(DeckMergeUi);
   private readonly router = inject(Router);
   private readonly drag = inject(SetBoardDrag);
   private readonly ngZone = inject(NgZone);
@@ -69,9 +73,25 @@ export class SetDecksDrawerComponent implements OnDestroy {
 
   public readonly acceptDeckDrag = (drag: CdkDrag<MtgDeck>): boolean => isDeckDragData(drag.data);
 
+  constructor() {
+    this.deckConflicts.conflicts$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.cdr.markForCheck();
+    });
+  }
+
   public ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  public deckHasConflict(deckId: string): boolean {
+    return this.deckConflicts.hasConflict(deckId);
+  }
+
+  public openMerge(deckId: string, event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    this.deckMergeUi.openRoster({ mergeDeckId: deckId });
   }
 
   public colorLabel(code: ManaColor): string {
@@ -140,7 +160,11 @@ export class SetDecksDrawerComponent implements OnDestroy {
     if (!setId) {
       return;
     }
-    this.router.navigate(['/set', setId, 'deck', deckId]);
+    if (this.deckConflicts.hasConflict(deckId)) {
+      this.deckMergeUi.openRoster({ mergeDeckId: deckId });
+      return;
+    }
+    void this.router.navigate(['/set', setId, 'deck', deckId]);
   }
 
   public deleteDeck(deck: MtgDeck, event: Event): void {

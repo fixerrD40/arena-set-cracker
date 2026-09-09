@@ -8,6 +8,10 @@ export interface MtgSet {
   name: string;
   iconSvgUri: string; // Keeps the official Scryfall vector symbol paths
   localArtUri: string; // Tracks the localized sandboxed cover background binary disk link
+  /** Cloud tip clock; ISO-8601. */
+  updatedAt?: string;
+  /** Local merge-base tip for classifyHydrate. */
+  mergeBaseUpdatedAt?: string;
 }
 
 /**
@@ -20,4 +24,5 @@ export interface CloudSetPayload {
   code: string;       // Unified formatting (e.g., "LTR")
   name: string;
   iconSvgUri: string;
+  updatedAt?: string;
 }

@@ -1,0 +1,161 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.merge-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--deck-panel-wash);
+  border: 1px solid var(--deck-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.merge-pane.editable {
+  border-color: var(--deck-gold);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--deck-gold) 40%, transparent);
+}
+
+.merge-pane-head {
+  flex-shrink: 0;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--deck-line);
+}
+
+.merge-pane-head h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--deck-muted);
+}
+
+.merge-pane-name,
+.merge-pane-rename {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--deck-fg);
+}
+
+.merge-pane-rename {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--deck-line);
+  border-radius: 4px;
+  background: #14110f;
+  padding: 0.25rem 0.4rem;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+}
+
+.merge-pane-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--deck-muted);
+}
+
+.merge-pane-hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.68rem;
+  color: var(--deck-muted);
+  line-height: 1.3;
+}
+
+.merge-pane-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.35rem;
+}
+
+.merge-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  margin-bottom: 0.3rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--tone-a), var(--tone-b));
+  cursor: default;
+}
+
+.merge-pane.editable .merge-row,
+.merge-pane.side .merge-row {
+  cursor: pointer;
+}
+
+.merge-pane.side .merge-row {
+  cursor: grab;
+}
+
+.merge-pane.drop-hot {
+  outline: 2px solid var(--deck-gold);
+  outline-offset: -2px;
+}
+
+.row-qty {
+  border: none;
+  background: rgba(0, 0, 0, 0.25);
+  color: #f7efe4;
+  min-width: 2.4rem;
+  padding: 0.35rem 0.25rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.qty-add {
+  font-size: 0.65rem;
+  opacity: 0.8;
+}
+
+.row-shell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  min-width: 0;
+}
+
+.row-name {
+  font-size: 0.82rem;
+  color: #f7efe4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-cost {
+  display: inline-flex;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
+
+.mana-pip-img {
+  width: 12px;
+  height: 12px;
+}
+
+.mana-pip-generic {
+  font-size: 0.65rem;
+  color: #f7efe4;
+}
+
+.merge-empty {
+  margin: 1rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--deck-muted);
+}

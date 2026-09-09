@@ -1,0 +1,63 @@
+<div class="deck-merge deck-merge-dialog">
+  <header class="deck-merge-toolbar">
+    <div class="toolbar-copy">
+      <h1 mat-dialog-title>Merge deck</h1>
+      <p>
+        Middle starts with overlapping copies (min qty). Sides show only leftover card diffs — click
+        to add one, qty or drag to pull a stack. Name is editable; other deck details stay yours
+        (edit them after, or Use theirs for a full cloud tip). Done returns Result to the list;
+        Back discards this edit.
+      </p>
+    </div>
+    <div class="toolbar-actions">
+      <button mat-button type="button" (click)="seedYours()">Use yours</button>
+      <button mat-button type="button" (click)="seedTheirs()">Use theirs</button>
+      <button mat-button type="button" (click)="back()">Back</button>
+      <button mat-flat-button color="primary" type="button" (click)="done()">Done</button>
+    </div>
+  </header>
+
+  @if (error) {
+    <p class="merge-error" role="alert">{{ error }}</p>
+  }
+
+  <mat-dialog-content>
+    @if (session$ | async; as session) {
+      <div class="deck-merge-panes">
+        <app-deck-merge-pane
+          title="Yours"
+          pane="yours"
+          [deck]="session.yoursResidual"
+          [catalog]="catalog()"
+          (addCopy)="onSideAdd('yours', $event)"
+          (pushStack)="onSidePushStack('yours', $event)"
+          (dragHover)="onDragHover($event)"
+          (stackDropped)="onStackDropped($event)"
+        />
+        <app-deck-merge-pane
+          title="Result"
+          pane="result"
+          [deck]="session.result"
+          [catalog]="catalog()"
+          [dropHot]="resultDropHot"
+          (addCopy)="onResultAdd($event)"
+          (removeCopy)="onResultRemove($event)"
+          (rename)="onRename($event)"
+        />
+        <app-deck-merge-pane
+          title="Theirs (cloud)"
+          pane="theirs"
+          [deck]="session.theirsResidual"
+          [catalog]="catalog()"
+          (addCopy)="onSideAdd('theirs', $event)"
+          (pushStack)="onSidePushStack('theirs', $event)"
+          (dragHover)="onDragHover($event)"
+          (stackDropped)="onStackDropped($event)"
+        />
+      </div>
+      @if (residualsCleared(session)) {
+        <p class="merge-aligned">All card diffs absorbed. Rename if you want; other details stay yours.</p>
+      }
+    }
+  </mat-dialog-content>
+</div>

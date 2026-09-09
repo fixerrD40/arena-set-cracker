@@ -203,12 +203,43 @@ function baselineLegacyDrizzleMigrations(folder) {
   ).run(first.hash, first.folderMillis);
 }
 
+/** Keep in sync with src/app/core/sqlite/schema-patches.ts */
+const TIP_CLOCK_SCHEMA_PATCH_STATEMENTS = [
+  `ALTER TABLE sets ADD COLUMN updated_at text DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+  `ALTER TABLE sets ADD COLUMN merge_base_updated_at text`,
+  `ALTER TABLE decks ADD COLUMN updated_at text`,
+  `ALTER TABLE decks ADD COLUMN merge_base_updated_at text`,
+  `UPDATE sets SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`,
+  `UPDATE decks SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`,
+  `CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id text PRIMARY KEY NOT NULL,
+    theirs_payload text NOT NULL,
+    theirs_updated_at text,
+    created_at text NOT NULL
+  )`
+];
+
+function applyTipClockSchemaPatch() {
+  const db = requireVaultDb();
+  for (const sql of TIP_CLOCK_SCHEMA_PATCH_STATEMENTS) {
+    try {
+      db.exec(sql);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/duplicate column/i.test(message)) {
+        throw err;
+      }
+    }
+  }
+}
+
 function migrateVaultWithDrizzle() {
   const folder = resolveDrizzleFolder();
   baselineLegacyDrizzleMigrations(folder);
   const { drizzle } = require('drizzle-orm/better-sqlite3');
   const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
   migrate(drizzle(requireVaultDb()), { migrationsFolder: folder });
+  applyTipClockSchemaPatch();
 }
 
 function registerIpc() {

@@ -61,6 +61,16 @@
                 {{ deckCardCount(deck) }} cards
               </button>
             </div>
+            @if (deckHasConflict(deck.id)) {
+              <div class="deck-conflict-row" role="group" [attr.aria-label]="'Sync conflict for ' + deck.name">
+                <span class="deck-conflict-label">Differs from cloud</span>
+                <button
+                  type="button"
+                  class="deck-conflict-btn"
+                  (click)="openMerge(deck.id, $event)"
+                >Merge</button>
+              </div>
+            }
             @if (deck.themes.length > 0) {
               <div class="deck-themes">
                 @for (theme of deck.themes; track theme) {

@@ -22,6 +22,7 @@ import {
   loadMigrationMetasFromFetch,
   migrateDrizzleSqlite
 } from './vault-migrations';
+import { applyTipClockSchemaPatch } from './schema-patches';
 
 @Injectable({
   providedIn: 'root'
@@ -217,5 +218,8 @@ export class BrowserVaultEngine extends VaultEngine {
     const migrations = await loadMigrationMetasFromFetch();
     await baselineLegacyDrizzleMigrations(host, migrations);
     migrateDrizzleSqlite(drizzleDb, migrations);
+    applyTipClockSchemaPatch((sql) => {
+      raw.exec(sql);
+    });
   }
 }

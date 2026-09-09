@@ -25,6 +25,7 @@ import {
   loadMigrationMetasFromFetch,
   sqlHostFromCapacitor
 } from './vault-migrations';
+import { applyTipClockSchemaPatchAsync } from './schema-patches';
 
 /**
  * Capacitor vault: native SQLite via @capacitor-community/sqlite.
@@ -208,6 +209,7 @@ export class CapacitorVaultEngine extends VaultEngine {
     const migrations = await loadMigrationMetasFromFetch();
     await baselineLegacyDrizzleMigrations(host, migrations);
     await applyMigrationMetas(host, migrations);
+    await applyTipClockSchemaPatchAsync((sql) => host.exec(sql));
   }
 
   private rows(values: any[] | undefined): Record<string, unknown>[] {

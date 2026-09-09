@@ -1,6 +1,7 @@
 import { inject, Injector } from '@angular/core';
 import { AppConfigService } from './config.service';
 import { SyncService } from '../services/sync.service';
+import { DeckConflictService } from '../services/deck-conflict.service';
 import { VAULT_ENGINE_TOKEN } from '../vault/vault.engine';
 
 /** Loads config, bootstraps the vault engine, then starts the sync listener. */
@@ -21,6 +22,7 @@ export function runConfigAndStorageInitialization(): Promise<void> {
 
       const syncService = injector.get(SyncService);
       syncService.initializeEngine();
+      injector.get(DeckConflictService).refresh().subscribe();
 
       console.log('[ConfigInitializer] Startup complete.');
     } catch (error) {

@@ -1,0 +1,78 @@
+<div
+  class="merge-pane"
+  [class.editable]="isResult()"
+  [class.side]="isSide()"
+  [class.drop-hot]="dropHot()"
+  [attr.data-merge-drop]="isResult() ? 'result' : null"
+>
+  <header class="merge-pane-head">
+    <h3>{{ title() }}</h3>
+    @if (isSide()) {
+      <p class="merge-pane-name">{{ deck().name }}</p>
+      <p class="merge-pane-hint">Click a card to add one · qty pulls the stack · drag onto Result</p>
+    } @else {
+      <input
+        class="merge-pane-rename"
+        [value]="deck().name"
+        (blur)="onRenameBlur($any($event.target).value)"
+        (keydown.enter)="$any($event.target).blur()"
+        aria-label="Result deck name"
+      />
+      <p class="merge-pane-hint">Click a card to remove one · qty adds one · details stay yours</p>
+    }
+    <p class="merge-pane-meta">
+      {{ summary().totalCopies }}/{{ constructedSize }}
+    </p>
+  </header>
+
+  <div class="merge-pane-list">
+    @for (item of lines(); track item.card.id) {
+      <div
+        class="merge-row tone-{{ deckRowTone(item.card) }}"
+        [style.--tone-a]="deckRowToneStyle(item.card)['--tone-a']"
+        [style.--tone-b]="deckRowToneStyle(item.card)['--tone-b']"
+        cdkDrag
+        [cdkDragData]="dragData(item)"
+        [cdkDragDisabled]="!isSide()"
+        (cdkDragStarted)="onDragStarted()"
+        (cdkDragMoved)="onDragMoved($event)"
+        (cdkDragEnded)="onDragEnded($event)"
+        role="button"
+        tabindex="0"
+        (click)="onRowClick(item.card.id)"
+        (keydown.enter)="onRowClick(item.card.id)"
+        [attr.aria-label]="
+          (isResult() ? 'Remove ' : 'Add ') + item.card.name
+        "
+      >
+        <button
+          type="button"
+          class="row-qty"
+          (click)="onQtyClick(item.card.id, $event)"
+          [attr.aria-label]="
+            (isResult() ? 'Add ' : 'Pull stack ') + item.card.name
+          "
+        >
+          <span class="qty-count">{{ item.quantity }}x</span>
+          <span class="qty-add" aria-hidden="true">{{ isResult() ? '+' : '↓' }}</span>
+        </button>
+        <div class="row-shell" cdkDragHandle>
+          <span class="row-name">{{ item.card.name }}</span>
+          <span class="row-cost">
+            @for (pip of deckRowManaPips(item.card); track $index) {
+              @if (manaPipAsset(pip); as src) {
+                <img class="mana-pip-img" [src]="src" [alt]="pip" />
+              } @else {
+                <span class="mana-pip-generic">{{ pip }}</span>
+              }
+            }
+          </span>
+        </div>
+      </div>
+    } @empty {
+      <p class="merge-empty">
+        {{ isResult() ? 'Agreed cards land here. Pull diffs from the sides.' : 'No remaining diffs.' }}
+      </p>
+    }
+  </div>
+</div>
