@@ -1,5 +1,5 @@
 <div class="set-board">
-  @if (boardShell$ | async; as board) {
+  @if (!catalogHold && (boardShell$ | async); as board) {
     @if (patternState$ | async; as patternState) {
       <div class="set-board-layout">
         @if (decksSidebarOpen) {
@@ -60,7 +60,53 @@
     }
   }
 
-  @if (showCreateDeck) {
+  @if (catalogHold) {
+    <div class="create-deck-overlay" role="dialog" aria-modal="true" aria-label="Refresh catalog">
+      <div class="create-deck-overlay-backdrop catalog-hold-backdrop"></div>
+      <div class="create-deck-overlay-panel catalog-hold-panel">
+        <h2 class="catalog-hold-title">Refresh catalog</h2>
+        <p class="catalog-hold-copy">
+          This set’s cards are missing printed stats. Fetching the catalog again. Your decks stay.
+        </p>
+        @if (catalogRefreshError) {
+          <div class="catalog-hold-error">{{ catalogRefreshError }}</div>
+          <button
+            mat-raised-button
+            color="primary"
+            type="button"
+            class="catalog-hold-retry"
+            (click)="retryCatalogRefresh()"
+          >
+            Try again
+          </button>
+        } @else if (installProgress$ | async; as progress) {
+          <div class="install-progress" role="status" aria-live="polite">
+            <p class="install-status">{{ statusLabel(progress) }}</p>
+            <div
+              class="lava-progress-track"
+              [class.indeterminate]="progress.total <= 0"
+              [attr.aria-valuenow]="progress.total > 0 ? progress.done : null"
+              [attr.aria-valuemin]="0"
+              [attr.aria-valuemax]="progress.total > 0 ? progress.total : null"
+              role="progressbar"
+            >
+              <div
+                class="lava-progress-fill"
+                [style.width.%]="progress.total > 0 ? progressPercent(progress) : null"
+              ></div>
+            </div>
+            @if (progress.total > 0) {
+              <p class="install-count">{{ progress.done }} / {{ progress.total }} cards</p>
+            }
+          </div>
+        } @else {
+          <p class="install-status">Preparing catalog refresh…</p>
+        }
+      </div>
+    </div>
+  }
+
+  @if (showCreateDeck && !catalogHold) {
     <div class="create-deck-overlay" role="dialog" aria-modal="true" aria-label="Create or import deck">
       <button
         type="button"

@@ -54,6 +54,10 @@ export const deckWorkspaceGuard: CanActivateFn = (
     return router.createUrlTree(['/library']);
   }
 
+  if (setService.catalogIsStale(workspace.cards)) {
+    return router.createUrlTree(['/set', setId]);
+  }
+
   const deck = workspace.decks.find((d) => String(d.id) === String(deckId));
   if (!deck) {
     console.warn(`[DeckWorkspaceGuard] Deck "${deckId}" is not in set "${setId}".`);

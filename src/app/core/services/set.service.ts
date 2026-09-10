@@ -10,6 +10,7 @@ import { ScryfallSet } from './api/scryfall/models/set.scryfall';
 import { ScryfallCard } from './api/scryfall/models/card.scryfall';
 
 import { mapScryfallToCard } from '../../shared/models/card/card.mappers';
+import { catalogNeedsRefresh } from '../../shared/models/card/catalog-freshness';
 
 import { sets, cards, decks, deckCards, DeckCardRow, DeckRow } from '../sqlite/sqlite.schema';
 import { ScryfallService } from './api/scryfall/scryfall.service';
@@ -61,6 +62,8 @@ export class SetService implements OnDestroy {
   private workspaceSubscription?: Subscription;
   private inFlightSetId: string | null = null;
   private inFlightLoad$: Observable<WorkspaceState | null> | null = null;
+  private catalogRefreshSetId: string | null = null;
+  private catalogRefresh$: Observable<WorkspaceState | null> | null = null;
 
   private readonly installedSetsSubject = new BehaviorSubject<MtgSet[]>([]);
   public readonly installedSets$: Observable<MtgSet[]> = this.installedSetsSubject.asObservable();
@@ -505,6 +508,87 @@ export class SetService implements OnDestroy {
       this.inFlightSetId = null;
       this.inFlightLoad$ = null;
     }
+  }
+
+  /** Re-fetch Scryfall onto existing card rows. Decks and art URIs stay. */
+  public refreshCatalog(setInfo: MtgSet, existing: MtgCard[]): Observable<WorkspaceState | null> {
+    if (this.catalogRefreshSetId === setInfo.id && this.catalogRefresh$) {
+      return this.catalogRefresh$;
+    }
+
+    const cleanCode = setInfo.code.toLowerCase();
+    const emitProgress = (partial: Omit<SetInstallProgress, 'setName' | 'setCode'>): void => {
+      this.installProgressSubject.next({
+        setName: setInfo.name,
+        setCode: cleanCode,
+        ...partial
+      });
+    };
+
+    emitProgress({ phase: 'catalog', done: 0, total: 0 });
+
+    const refresh$ = this.scryfallService.getCardsBySet(cleanCode).pipe(
+      switchMap((scryfallCards: ScryfallCard[]) => {
+        const arenaOnly = scryfallCards.filter(
+          (card) => card.arena_id != null && card.collector_number
+        );
+        const byId = new Map(existing.map((card) => [card.id, card]));
+        const mapped = arenaOnly.map((apiCard) => {
+          const prior = byId.get(apiCard.id);
+          return mapScryfallToCard(
+            apiCard,
+            setInfo.id,
+            prior?.localArtUri ?? '',
+            prior?.localIllustrationUri ?? ''
+          );
+        });
+        const updates = mapped.filter((card) => byId.has(card.id));
+        const inserts = mapped.filter((card) => !byId.has(card.id));
+        emitProgress({ phase: 'saving', done: 0, total: mapped.length });
+
+        return forkJoin({
+          updated: this.vault.updateBulk<MtgCard, MtgCard>(cards, updates),
+          inserted: this.vault.insertBulk<MtgCard, MtgCard>(cards, inserts)
+        }).pipe(
+          tap(() => emitProgress({ phase: 'saving', done: mapped.length, total: mapped.length })),
+          map(() => mapped)
+        );
+      }),
+      switchMap(() => this.loadSetWorkspace(setInfo.id)),
+      tap((workspace) => {
+        if (workspace) {
+          emitProgress({
+            phase: 'done',
+            done: workspace.cards.length,
+            total: workspace.cards.length
+          });
+        }
+        this.installProgressSubject.next(null);
+        if (this.catalogRefreshSetId === setInfo.id) {
+          this.catalogRefreshSetId = null;
+          this.catalogRefresh$ = null;
+        }
+      }),
+      catchError((err) => {
+        console.error(`[SetService] Catalog refresh failed for ${setInfo.code}:`, err?.message || err);
+        this.installProgressSubject.next(null);
+        if (this.catalogRefreshSetId === setInfo.id) {
+          this.catalogRefreshSetId = null;
+          this.catalogRefresh$ = null;
+        }
+        return throwError(() => err);
+      }),
+      shareReplay({ bufferSize: 1, refCount: true })
+    );
+
+    this.catalogRefreshSetId = setInfo.id;
+    this.catalogRefresh$ = refresh$;
+    refresh$.subscribe({ error: () => undefined });
+    return refresh$;
+  }
+
+  public catalogIsStale(cards: readonly MtgCard[]): boolean {
+    return catalogNeedsRefresh(cards);
   }
 
   /** Installs a set: persist metadata, download Arena-only card art, bulk-insert cards. */

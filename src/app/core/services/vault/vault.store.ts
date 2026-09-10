@@ -76,6 +76,30 @@ export class VaultStore {
     );
   }
 
+  public updateBulk<TInput = any, TOutput = any>(
+    table: SQLiteTable<any>,
+    payloads: TInput[]
+  ): Observable<TOutput[]> {
+    if (!payloads || payloads.length === 0) return of([]);
+
+    return from(payloads).pipe(
+      concatMap((domainModel) => {
+        const recordId = (domainModel as { id?: string | number })?.id;
+        if (!recordId) {
+          return throwError(() => new Error('[VaultStore] updateBulk aborted: Missing primary identity column key "id".'));
+        }
+        const dbPayload = serializePayload(table, domainModel);
+        return from(this.vaultEngine.updateRowById(table, recordId, dbPayload));
+      }),
+      toArray(),
+      concatMap(() => {
+        this.flush();
+        return of(payloads as unknown as TOutput[]);
+      }),
+      catchError((err) => throwError(() => err))
+    );
+  }
+
   public update<TInput = any, TOutput = any>(
     table: SQLiteTable<any>,
     domainModel: TInput

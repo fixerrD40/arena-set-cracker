@@ -114,3 +114,99 @@
   z-index: 1;
   width: min(440px, 100%);
 }
+
+.catalog-hold-backdrop {
+  cursor: default;
+}
+
+.catalog-hold-panel {
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--deck-panel);
+  color: var(--deck-fg);
+  border: 1px solid var(--deck-line);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px var(--chrome-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.catalog-hold-title {
+  margin: 0;
+  color: var(--deck-gold);
+  font-size: 1.25rem;
+}
+
+.catalog-hold-copy {
+  margin: 0;
+  color: var(--deck-muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.catalog-hold-error {
+  background-color: var(--asc-error-container);
+  color: var(--asc-error);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.catalog-hold-retry {
+  align-self: flex-end;
+  --mdc-protected-button-container-color: var(--deck-gold-deep);
+  --mdc-protected-button-label-text-color: var(--app-bg);
+  background-color: var(--deck-gold-deep);
+  color: var(--app-bg);
+}
+
+.install-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.install-status {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--deck-gold);
+}
+
+.install-count {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--deck-muted);
+}
+
+.lava-progress-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--deck-panel-deep);
+  border: 1px solid var(--deck-line);
+}
+
+.lava-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--lava-fill);
+  box-shadow: var(--glow-lava);
+  transition: width 0.15s ease-out;
+}
+
+.lava-progress-track.indeterminate .lava-progress-fill {
+  width: 40%;
+  animation: lava-progress-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes lava-progress-pulse {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
+}

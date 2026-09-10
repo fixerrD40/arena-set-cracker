@@ -18,9 +18,11 @@ import { CDK_DRAG_CONFIG } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
-import { SetService } from '../../core/services/set.service';
+import { SetInstallProgress, SetService } from '../../core/services/set.service';
+import { MtgCard } from '../../shared/models/card/card';
 import { ManaColor } from '../../shared/models/card/arena-collection.filter';
 import { MtgDeck } from '../../shared/models/deck/deck';
+import { MtgSet } from '../../shared/models/set/set';
 import { remainingPoolCards, remainingPoolSignature } from '../../shared/models/discovery/remaining-pool';
 import { buildBoardShell, discoverPatterns } from './set.board';
 import { SetBoardDrag } from './set-board-drag';
@@ -66,6 +68,10 @@ export class SetComponent implements OnInit, OnDestroy {
 
   public decksSidebarOpen = true;
   public showCreateDeck = false;
+  public catalogHold = false;
+  public catalogRefreshError: string | null = null;
+  public readonly installProgress$ = this.setService.installProgress$;
+  private catalogRefreshSetId: string | null = null;
   public drainNeedsWork = false;
   public scopedColors: readonly ManaColor[] = [];
   public selectedTheme: string | null = null;
@@ -138,11 +144,71 @@ export class SetComponent implements OnInit, OnDestroy {
       this.selectedTheme = theme;
       this.cdr.markForCheck();
     });
+
+    this.setService.activeContext$.pipe(takeUntil(this.destroy$)).subscribe((workspace) => {
+      if (!workspace) {
+        return;
+      }
+      if (!this.setService.catalogIsStale(workspace.cards)) {
+        this.catalogHold = false;
+        this.catalogRefreshError = null;
+        this.catalogRefreshSetId = null;
+        this.cdr.markForCheck();
+        return;
+      }
+      this.catalogHold = true;
+      this.showCreateDeck = false;
+      this.cdr.markForCheck();
+      if (this.catalogRefreshSetId === workspace.setInfo.id) {
+        return;
+      }
+      this.beginCatalogRefresh(workspace.setInfo, workspace.cards);
+    });
   }
 
   public ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  public retryCatalogRefresh(): void {
+    const workspace = this.setService.currentWorkspaceSnapshot;
+    if (!workspace) {
+      return;
+    }
+    this.beginCatalogRefresh(workspace.setInfo, workspace.cards);
+  }
+
+  public progressPercent(progress: SetInstallProgress): number {
+    if (progress.total <= 0) {
+      return 0;
+    }
+    return Math.min(100, Math.round((progress.done / progress.total) * 100));
+  }
+
+  public statusLabel(progress: SetInstallProgress): string {
+    switch (progress.phase) {
+      case 'catalog':
+        return `Fetching catalog for ${progress.setName}…`;
+      case 'saving':
+        return `Updating ${progress.setName}…`;
+      case 'done':
+        return `Updated ${progress.setName}`;
+      default:
+        return `Updating ${progress.setName}…`;
+    }
+  }
+
+  private beginCatalogRefresh(setInfo: MtgSet, existing: MtgCard[]): void {
+    this.catalogRefreshSetId = setInfo.id;
+    this.catalogRefreshError = null;
+    this.cdr.markForCheck();
+    this.setService.refreshCatalog(setInfo, existing).subscribe({
+      error: () => {
+        this.catalogRefreshError = 'Catalog refresh failed. Check the network connection and try again.';
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   public openCreateDeck(): void {
