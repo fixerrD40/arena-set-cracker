@@ -22,7 +22,7 @@ Color identity is not capped at two; do not bake guild/dual as the only shape of
 ## Stack map
 
 - Angular 22 standalone + Material
-- Local vault: Drizzle schema (`public/drizzle/0000_*.sql` bootstrap). Empty vault applies that SQL; existing DB loads as-is. No startup ALTER / column-ensure. No in-place upgrades until a client is shipped; layout change means wipe `mtg_vault.db` (and the browser IndexedDB key).
+- Local vault: Drizzle schema (`public/drizzle/0000_*.sql` bootstrap, later journal tips). Empty vault applies SQL in order; existing DBs apply new tips via `vault-migrations`. Do not rewrite 0000.
 - Persist hosts via `VAULT_ENGINE_TOKEN`: browser = sql.js + IndexedDB (`BrowserVaultEngine`); Electron = `better-sqlite3` in main (`ElectronVaultEngine`); Capacitor = `@capacitor-community/sqlite` (`CapacitorVaultEngine`).
 - Domain I/O: `VaultStore` (local CRUD + enqueue syncable sets/decks). Drain: `SyncService` → NDJSON bulk-sync. Same-DB `sync_queue` outbox.
 - Also: Capacitor mobile, optional cloud API via `src/assets/config.json` (`baseUrl`)

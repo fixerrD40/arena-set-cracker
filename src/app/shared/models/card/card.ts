@@ -15,4 +15,7 @@ export interface MtgCard {
   rarity: string;
   manaCost: string;
   oracleText: string;
+  keywords: string[];
+  power: string;
+  toughness: string;
 }

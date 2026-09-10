@@ -13,7 +13,10 @@ function card(partial: Partial<MtgCard> & Pick<MtgCard, 'name' | 'typeLine'>): M
     manaCost: '',
     colors: [],
     oracleText: '',
-    ...partial
+    keywords: [],
+    power: '',
+    toughness: '',
+    ...partial}
   };
 }
 

@@ -71,7 +71,13 @@ Another Stray Text Line 1234
           colors: ['W'],
           rarity: 'rare',
           manaCost: '{1}{W}',
-          oracleText: ''
+          oracleText: '',
+        keywords: [],
+        power: '',
+        toughness: '',
+          keywords: [],
+          power: '',
+          toughness: ''
         }
       ];
       const { cards, unmatched } = resolveArenaLinesToCardMap(
@@ -98,7 +104,10 @@ Another Stray Text Line 1234
         colors: [],
         rarity: 'common',
         manaCost: '',
-        oracleText: ''
+        oracleText: '',
+        keywords: [],
+        power: '',
+        toughness: ''
       },
       {
         id: 'id-dawn',
@@ -113,7 +122,10 @@ Another Stray Text Line 1234
         colors: ['W'],
         rarity: 'rare',
         manaCost: '{1}{W}',
-        oracleText: ''
+        oracleText: '',
+        keywords: [],
+        power: '',
+        toughness: ''
       }
     ];
 
@@ -147,7 +159,10 @@ Another Stray Text Line 1234
         colors: [],
         rarity: 'common',
         manaCost: '',
-        oracleText: ''
+        oracleText: '',
+        keywords: [],
+        power: '',
+        toughness: ''
       },
       {
         id: 'id-dawn',
@@ -162,7 +177,10 @@ Another Stray Text Line 1234
         colors: ['W'],
         rarity: 'rare',
         manaCost: '{1}{W}',
-        oracleText: ''
+        oracleText: '',
+        keywords: [],
+        power: '',
+        toughness: ''
       }
     ];
 

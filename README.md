@@ -51,7 +51,7 @@ Output: `dist/arena-set-cracker/browser/`
 npm run db:generate
 ```
 
-Migrations live in `public/drizzle/` and are applied on first bootstrap.
+Migrations live in `public/drizzle/`. `db:generate` diffs `sqlite.schema.ts` against the latest journal snapshot; keep that snapshot honest with genesis or the next file will try to rebuild tables the patches already applied.
 
 ## Mobile
 

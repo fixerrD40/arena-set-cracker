@@ -16,7 +16,10 @@ export function mapRowToCard(row: CardRow): MtgCard {
     colors: row.colors,
     rarity: row.rarity,
     manaCost: row.manaCost,
-    oracleText: row.oracleText || ''
+    oracleText: row.oracleText || '',
+    keywords: row.keywords ?? [],
+    power: row.power || '',
+    toughness: row.toughness || ''
   };
 }
 
@@ -34,7 +37,10 @@ export function mapCardToInsert(card: MtgCard): CardInsert {
     colors: card.colors,
     rarity: card.rarity,
     manaCost: card.manaCost,
-    oracleText: card.oracleText || ''
+    oracleText: card.oracleText || '',
+    keywords: card.keywords ?? [],
+    power: card.power || '',
+    toughness: card.toughness || ''
   };
 }
 
@@ -57,8 +63,18 @@ export function mapScryfallToCard(
     colors: apiCard.colors || [],
     rarity: apiCard.rarity || 'common',
     manaCost: apiCard.mana_cost || '{0}',
-    oracleText: scryfallOracleText(apiCard)
+    oracleText: scryfallOracleText(apiCard),
+    keywords: apiCard.keywords ?? [],
+    power: scryfallPrintedStat(apiCard, 'power'),
+    toughness: scryfallPrintedStat(apiCard, 'toughness')
   };
+}
+
+function scryfallPrintedStat(apiCard: ScryfallCard, field: 'power' | 'toughness'): string {
+  if (apiCard[field]) {
+    return apiCard[field] ?? '';
+  }
+  return apiCard.card_faces?.[0]?.[field] || '';
 }
 
 function scryfallOracleText(apiCard: ScryfallCard): string {

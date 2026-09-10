@@ -38,6 +38,9 @@ export const cards = sqliteTable('cards', {
   rarity: text('rarity').notNull(),
   manaCost: text('mana_cost').notNull(),
   oracleText: text('oracle_text').notNull().default(''),
+  keywords: text('keywords', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+  power: text('power').notNull().default(''),
+  toughness: text('toughness').notNull().default(''),
 });
 
 export const decks = sqliteTable('decks', {

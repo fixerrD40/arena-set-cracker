@@ -14,7 +14,10 @@ function card(oracleText: string, extra = ''): MtgCard {
     colors: ['U'],
     rarity: 'common',
     manaCost: '{1}',
-    oracleText: extra ? `${oracleText} ${extra}` : oracleText
+    oracleText: extra ? `${oracleText} ${extra}` : oracleText,
+    keywords: [],
+    power: '',
+    toughness: ''
   };
 }
 
