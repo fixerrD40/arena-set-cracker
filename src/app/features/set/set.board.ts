@@ -5,6 +5,7 @@ import { WorkspaceState } from '../../core/services/set.service';
 import { MtgCard } from '../../shared/models/card/card';
 import { compareArenaCollection, ManaColor } from '../../shared/models/card/arena-collection.filter';
 import { ConcentratedPattern, scheduleConcentrate } from '../../shared/models/discovery/concentration';
+import { EmergentPattern } from '../../shared/models/discovery/scope-emergence';
 import {
   remainingPoolCards,
   remainingPoolCounts
@@ -29,9 +30,15 @@ export interface SetBoardShell {
   metrics: SetAssignmentMetrics;
 }
 
-export interface PatternState {
+export interface ConcentrateState {
   patterns: ConcentratedPattern[];
   loading: boolean;
+}
+
+export interface PatternState {
+  patterns: EmergentPattern[];
+  loading: boolean;
+  scoped: boolean;
 }
 
 export interface ThemePreviewLayout {
@@ -232,12 +239,12 @@ export function computeThemePreviewLayout(stage: HTMLElement): ThemePreviewLayou
   };
 }
 
-export function discoverPatterns(pool: readonly MtgCard[], ngZone: NgZone): Observable<PatternState> {
+export function discoverPatterns(pool: readonly MtgCard[], ngZone: NgZone): Observable<ConcentrateState> {
   if (pool.length === 0) {
     return of({ patterns: [], loading: false });
   }
 
-  return new Observable<PatternState>((subscriber) => {
+  return new Observable<ConcentrateState>((subscriber) => {
     let cancelled = false;
     subscriber.next({ patterns: [], loading: true });
 

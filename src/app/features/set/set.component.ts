@@ -24,6 +24,7 @@ import { ManaColor } from '../../shared/models/card/arena-collection.filter';
 import { MtgDeck } from '../../shared/models/deck/deck';
 import { MtgSet } from '../../shared/models/set/set';
 import { remainingPoolCards, remainingPoolSignature } from '../../shared/models/discovery/remaining-pool';
+import { emergePatterns } from '../../shared/models/discovery/scope-emergence';
 import { buildBoardShell, discoverPatterns } from './set.board';
 import { SetBoardDrag } from './set-board-drag';
 import { SetDecksDrawerComponent } from './decks/set-decks-drawer.component';
@@ -105,8 +106,39 @@ export class SetComponent implements OnInit, OnDestroy {
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
-  public readonly patternState$ = this.discoveryPool$.pipe(
+  private readonly baselinePool$ = combineLatest({
+    workspace: this.setService.activeContext$,
+    drainNeedsWork: this.drainNeedsWork$.asObservable()
+  }).pipe(
+    map(({ workspace, drainNeedsWork }) =>
+      workspace
+        ? remainingPoolCards(workspace.cards, workspace.decks, { drainNeedsWork })
+        : []
+    ),
+    distinctUntilChanged(
+      (prev, next) => remainingPoolSignature(prev) === remainingPoolSignature(next)
+    ),
+    shareReplay({ bufferSize: 1, refCount: true })
+  );
+
+  private readonly baselinePatterns$ = this.baselinePool$.pipe(
     switchMap((pool) => discoverPatterns(pool, this.ngZone)),
+    shareReplay({ bufferSize: 1, refCount: true })
+  );
+
+  public readonly patternState$ = combineLatest({
+    baseline: this.baselinePatterns$,
+    scoped: this.discoveryPool$,
+    colors: this.colorScope$.asObservable()
+  }).pipe(
+    map(({ baseline, scoped, colors }) => {
+      const rankByLift = colors.length > 0;
+      return {
+        loading: baseline.loading,
+        scoped: rankByLift,
+        patterns: baseline.loading ? [] : emergePatterns(baseline.patterns, scoped, rankByLift)
+      };
+    }),
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
