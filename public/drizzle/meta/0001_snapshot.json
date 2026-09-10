@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "519e2d73-95d5-4703-ad99-9f2001de96bd",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "e42d808d-71a3-4a6d-8e89-574668cb6d23",
+  "prevId": "519e2d73-95d5-4703-ad99-9f2001de96bd",
   "tables": {
     "cards": {
       "name": "cards",
@@ -94,6 +94,30 @@
         },
         "oracle_text": {
           "name": "oracle_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "keywords": {
+          "name": "keywords",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "power": {
+          "name": "power",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "toughness": {
+          "name": "toughness",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

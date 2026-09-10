@@ -93,7 +93,10 @@ export class DeckMergePaneComponent {
           colors: [],
           rarity: '',
           manaCost: '',
-          oracleText: ''
+          oracleText: '',
+          keywords: [],
+          power: '',
+          toughness: ''
         } satisfies MtgCard);
       rows.push({ card, quantity });
     }

@@ -10,6 +10,8 @@ export interface ScryfallCardFace {
   type_line?: string;
   colors?: string[];
   oracle_text?: string;
+  power?: string;
+  toughness?: string;
   image_uris?: ScryfallImageUris;
 }
 
@@ -23,6 +25,9 @@ export class ScryfallCard {
   mana_cost?: string;
   oracle_text?: string;
   colors?: string[];
+  keywords?: string[];
+  power?: string;
+  toughness?: string;
   image_uris?: ScryfallImageUris;
   card_faces?: ScryfallCardFace[];
 

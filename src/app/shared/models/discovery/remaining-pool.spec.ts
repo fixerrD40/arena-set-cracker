@@ -15,7 +15,10 @@ function card(id: string, colors: string[] = ['W']): MtgCard {
     colors,
     rarity: 'common',
     manaCost: '{1}',
-    oracleText: ''
+    oracleText: '',
+    keywords: [],
+    power: '',
+    toughness: ''
   };
 }
 

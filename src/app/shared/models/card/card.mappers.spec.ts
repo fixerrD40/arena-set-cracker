@@ -58,6 +58,33 @@ describe('mapScryfallToCard', () => {
     expect(mapped.localIllustrationUri).toBe('');
   });
 
+  it('copies keywords and printed power/toughness', () => {
+    const apiCard = new ScryfallCard({
+      id: 'scry-bear',
+      name: 'Grizzly Bears',
+      keywords: ['Trample'],
+      power: '2',
+      toughness: '2'
+    });
+
+    const mapped = mapScryfallToCard(apiCard, 'set-ltr');
+    expect(mapped.keywords).toEqual(['Trample']);
+    expect(mapped.power).toBe('2');
+    expect(mapped.toughness).toBe('2');
+  });
+
+  it('reads power and toughness from the front face when the card has none', () => {
+    const apiCard = new ScryfallCard({
+      id: 'scry-mdfc',
+      name: 'Front // Back',
+      card_faces: [{ name: 'Front', power: '3', toughness: '2' }]
+    });
+
+    const mapped = mapScryfallToCard(apiCard, 'set-ltr');
+    expect(mapped.power).toBe('3');
+    expect(mapped.toughness).toBe('2');
+  });
+
   it('uses empty oracle text when Scryfall omitted it', () => {
     const apiCard = new ScryfallCard({
       id: 'scry-land',

@@ -21,7 +21,10 @@ function card(partial: Partial<MtgCard> & Pick<MtgCard, 'name' | 'colors' | 'typ
     rarity: 'common',
     manaCost: '',
     oracleText: '',
-    ...partial
+    keywords: [],
+    power: '',
+    toughness: '',
+    ...partial}
   };
 }
 

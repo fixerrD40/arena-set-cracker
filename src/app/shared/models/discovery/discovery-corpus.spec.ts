@@ -15,7 +15,10 @@ function card(typeLine: string, oracleText: string): MtgCard {
     colors: ['G'],
     rarity: 'common',
     manaCost: '{1}',
-    oracleText
+    oracleText,
+    keywords: [],
+    power: '',
+    toughness: ''
   };
 }
 
