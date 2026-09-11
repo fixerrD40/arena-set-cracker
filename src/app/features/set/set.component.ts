@@ -25,6 +25,7 @@ import { MtgDeck } from '../../shared/models/deck/deck';
 import { MtgSet } from '../../shared/models/set/set';
 import { remainingPoolCards, remainingPoolSignature } from '../../shared/models/discovery/remaining-pool';
 import { emergePatterns } from '../../shared/models/discovery/scope-emergence';
+import { buildVocabularyExpansion, vocabularySignature } from '../../shared/models/discovery/vocabulary-expansion';
 import { buildBoardShell, discoverPatterns } from './set.board';
 import { SetBoardDrag } from './set-board-drag';
 import { SetDecksDrawerComponent } from './decks/set-decks-drawer.component';
@@ -121,22 +122,34 @@ export class SetComponent implements OnInit, OnDestroy {
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
-  private readonly baselinePatterns$ = this.baselinePool$.pipe(
-    switchMap((pool) => discoverPatterns(pool, this.ngZone)),
+  private readonly vocabulary$ = this.setService.activeContext$.pipe(
+    map((workspace) => workspace?.vocabulary ?? []),
+    distinctUntilChanged((prev, next) => vocabularySignature(prev) === vocabularySignature(next)),
+    shareReplay({ bufferSize: 1, refCount: true })
+  );
+
+  private readonly baselinePatterns$ = combineLatest({
+    pool: this.baselinePool$,
+    vocabulary: this.vocabulary$
+  }).pipe(
+    switchMap(({ pool, vocabulary }) => discoverPatterns(pool, this.ngZone, vocabulary)),
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
   public readonly patternState$ = combineLatest({
     baseline: this.baselinePatterns$,
     scoped: this.discoveryPool$,
-    colors: this.colorScope$.asObservable()
+    colors: this.colorScope$.asObservable(),
+    vocabulary: this.vocabulary$,
+    workspace: this.setService.activeContext$
   }).pipe(
-    map(({ baseline, scoped, colors }) => {
+    map(({ baseline, scoped, colors, vocabulary, workspace }) => {
       const rankByLift = colors.length > 0;
+      const expansion = buildVocabularyExpansion(vocabulary, workspace?.cards ?? []);
       return {
         loading: baseline.loading,
         scoped: rankByLift,
-        patterns: baseline.loading ? [] : emergePatterns(baseline.patterns, scoped, rankByLift)
+        patterns: baseline.loading ? [] : emergePatterns(baseline.patterns, scoped, rankByLift, expansion)
       };
     }),
     shareReplay({ bufferSize: 1, refCount: true })

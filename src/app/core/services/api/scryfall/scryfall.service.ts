@@ -59,6 +59,31 @@ export class ScryfallService {
     return this.fetchAllPages(url);
   }
 
+  /** Child sets whose parent is this code (tokens, helpers). Includes digital. */
+  public getCompanionSets(code: string): Observable<ScryfallSet[]> {
+    const parent = code.toLowerCase();
+    return this.http.get<{ data: ScryfallSet[] }>(`${this.baseUrl}/sets`, this.httpOptions).pipe(
+      map((response) =>
+        (response.data || [])
+          .map((raw) => new ScryfallSet(raw))
+          .filter((set) => set.parent_set_code?.toLowerCase() === parent)
+      )
+    );
+  }
+
+  /** Every printing in a set code — tokens have no `game:arena` filter. */
+  public getSetPrintings(code: string): Observable<ScryfallCard[]> {
+    const url = `${this.baseUrl}/cards/search?q=set:${code.toLowerCase()}`;
+    return this.fetchAllPages(url).pipe(
+      catchError((err) => {
+        if (err?.status === 404) {
+          return of([]);
+        }
+        return throwError(() => err);
+      })
+    );
+  }
+
   /** Follows Scryfall pagination with a 100ms delay between pages (rate limit). */
   private fetchAllPages(url: string, accumulated: ScryfallCard[] = []): Observable<ScryfallCard[]> {
     return this.http.get<{ has_more: boolean; next_page?: string; data: ScryfallCard[] }>(url, this.httpOptions).pipe(

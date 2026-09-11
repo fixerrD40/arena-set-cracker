@@ -11,8 +11,10 @@ import { ScryfallCard } from './api/scryfall/models/card.scryfall';
 
 import { mapScryfallToCard } from '../../shared/models/card/card.mappers';
 import { catalogNeedsRefresh } from '../../shared/models/card/catalog-freshness';
+import { SetVocabulary } from '../../shared/models/card/set-vocabulary';
+import { mapScryfallToVocabulary } from '../../shared/models/card/set-vocabulary.mappers';
 
-import { sets, cards, decks, deckCards, DeckCardRow, DeckRow } from '../sqlite/sqlite.schema';
+import { sets, cards, decks, deckCards, setVocabulary, DeckCardRow, DeckRow } from '../sqlite/sqlite.schema';
 import { ScryfallService } from './api/scryfall/scryfall.service';
 import { FileSystemService } from './file-system.service';
 import { BackendService } from './backend.service';
@@ -43,6 +45,7 @@ export interface WorkspaceState {
   setInfo: MtgSet;
   cards: MtgCard[];
   decks: MtgDeck[];
+  vocabulary: SetVocabulary[];
   loadedAt: string;
 }
 
@@ -262,9 +265,10 @@ export class SetService implements OnDestroy {
       setInfo: this.vault.fetchRecord<MtgSet>(sets, setId),
       deckModels: this.vault.fetchCollection<DeckRow>(decks, setId),
       cardModels: this.vault.fetchCollection<MtgCard>(cards, setId),
-      deckCardRows: this.vault.fetchCollection<DeckCardRow>(deckCards, 'all')
+      deckCardRows: this.vault.fetchCollection<DeckCardRow>(deckCards, 'all'),
+      vocabulary: this.vault.fetchCollection<SetVocabulary>(setVocabulary, setId)
     }).pipe(
-      switchMap(({ setInfo, deckModels, cardModels, deckCardRows }) => {
+      switchMap(({ setInfo, deckModels, cardModels, deckCardRows, vocabulary }) => {
         if (!setInfo) {
           throw new Error(`[SetService] Set configuration missing on ID: ${setId}`);
         }
@@ -310,12 +314,17 @@ export class SetService implements OnDestroy {
               );
 
         return cardSource$.pipe(
-          map((finalCards) => ({
-            setInfo,
-            cards: finalCards,
-            decks: userDecks,
-            loadedAt: new Date().toISOString()
-          }))
+          switchMap((finalCards) =>
+            this.ensureVocabulary(setInfo, vocabulary).pipe(
+              map((vocab) => ({
+                setInfo,
+                cards: finalCards,
+                decks: userDecks,
+                vocabulary: vocab,
+                loadedAt: new Date().toISOString()
+              }))
+            )
+          )
         );
       })
     );
@@ -407,6 +416,50 @@ export class SetService implements OnDestroy {
       catchError((err) => {
         console.error(`[SetService] Catalog fill failed for ${set.code}:`, err?.message || err);
         return of(void 0);
+      })
+    );
+  }
+
+  private ensureVocabulary(setInfo: MtgSet, existing: SetVocabulary[]): Observable<SetVocabulary[]> {
+    if (existing.length > 0) {
+      return of(existing);
+    }
+    return this.persistCompanionVocabulary(setInfo);
+  }
+
+  /** Token/helper objects for this set. Never written to `cards`. */
+  private persistCompanionVocabulary(setInfo: MtgSet): Observable<SetVocabulary[]> {
+    return this.scryfallService.getCompanionSets(setInfo.code).pipe(
+      switchMap((companions) => {
+        if (companions.length === 0) {
+          return of([] as ScryfallCard[]);
+        }
+        return from(companions).pipe(
+          concatMap((companion) =>
+            this.scryfallService.getSetPrintings(companion.code).pipe(
+              catchError(() => of([] as ScryfallCard[]))
+            )
+          ),
+          toArray(),
+          map((pages) => pages.flat())
+        );
+      }),
+      switchMap((apiCards) => {
+        if (apiCards.length === 0) {
+          return this.vault.fetchCollection<SetVocabulary>(setVocabulary, setInfo.id);
+        }
+        const rows = apiCards.map((apiCard) => mapScryfallToVocabulary(apiCard, setInfo.id));
+        return this.vault.deleteWhere(setVocabulary, 'setId', setInfo.id).pipe(
+          switchMap(() => this.vault.insertBulk<SetVocabulary, SetVocabulary>(setVocabulary, rows)),
+          map(() => rows)
+        );
+      }),
+      catchError((err) => {
+        console.error(
+          `[SetService] Companion vocabulary fetch failed for ${setInfo.code}:`,
+          err?.message || err
+        );
+        return of([]);
       })
     );
   }
@@ -554,6 +607,7 @@ export class SetService implements OnDestroy {
           map(() => mapped)
         );
       }),
+      switchMap(() => this.persistCompanionVocabulary(setInfo)),
       switchMap(() => this.loadSetWorkspace(setInfo.id)),
       tap((workspace) => {
         if (workspace) {
@@ -655,7 +709,8 @@ export class SetService implements OnDestroy {
         // Best-effort set key art; missing cover must not fail install.
         return this.triggerCoverAssetDownload(cleanCode).pipe(
           catchError(() => of('')),
-          switchMap(() => this.vault.insertBulk<MtgCard, MtgCard>(cards, domainCards))
+          switchMap(() => this.vault.insertBulk<MtgCard, MtgCard>(cards, domainCards)),
+          switchMap(() => this.persistCompanionVocabulary(domainSet).pipe(map(() => domainCards)))
         );
       }),
 
@@ -724,6 +779,7 @@ export class SetService implements OnDestroy {
 
         return clearDeckCards$.pipe(
           concatMap(() => this.vault.deleteWhere(cards, 'setId', set.id)),
+          concatMap(() => this.vault.deleteWhere(setVocabulary, 'setId', set.id)),
           concatMap(() => this.vault.deleteWhere(decks, 'setId', set.id)),
           concatMap(() => this.vault.delete(sets, set.id)),
           concatMap(() => this.fileService.deleteDirectory(this.getSetDirectoryPath(set.code)))

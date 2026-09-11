@@ -25,6 +25,14 @@ describe('oracle-parser', () => {
     expect(flat.effects.some((entry) => entry.includes('create a Treasure token'))).toBe(true);
   });
 
+  it('keeps a condition nested inside an activated ability', () => {
+    const flat = flattenOracleText(
+      '{T}, Sacrifice another creature: Target player loses 1 life. If the sacrificed creature was legendary, amass Orcs 2.'
+    );
+    expect(flat.conditions).toEqual(['the sacrificed creature was legendary']);
+    expect(flat.effects.some((entry) => /amass orcs 2/i.test(entry))).toBe(true);
+  });
+
   it('parses activated ability effect text after the colon', () => {
     const text = '{T}: Draw a card.';
     const parsed = parseOracleText(text);

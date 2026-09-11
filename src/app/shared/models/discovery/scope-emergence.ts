@@ -2,6 +2,7 @@ import { collectionColors } from '../card/arena-collection.filter';
 import { MtgCard } from '../card/card';
 import { ConcentratedPattern } from './concentration';
 import { cardMatchesOracleTheme } from './theme-match';
+import { VocabularyExpansion } from './vocabulary-expansion';
 
 const SIGNPOST_RARITIES = new Set(['uncommon', 'rare', 'mythic']);
 
@@ -19,7 +20,8 @@ export function isGoldSignpost(card: MtgCard): boolean {
 export function emergePatterns(
   patterns: readonly ConcentratedPattern[],
   scoped: readonly MtgCard[],
-  rankByLift: boolean
+  rankByLift: boolean,
+  expansion?: VocabularyExpansion | null
 ): EmergentPattern[] {
   if (scoped.length === 0) {
     return [];
@@ -30,7 +32,7 @@ export function emergePatterns(
     if (pattern.cardCount <= 0 || pattern.poolSize <= 0) {
       continue;
     }
-    const matches = scoped.filter((card) => cardMatchesOracleTheme(card, pattern.phrase));
+    const matches = scoped.filter((card) => cardMatchesOracleTheme(card, pattern.phrase, expansion));
     if (matches.length === 0) {
       continue;
     }

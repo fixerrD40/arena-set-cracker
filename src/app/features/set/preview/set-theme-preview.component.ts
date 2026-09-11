@@ -19,6 +19,8 @@ import { BehaviorSubject, combineLatest, map } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
 import { MtgCard } from '../../../shared/models/card/card';
+import { SetVocabulary } from '../../../shared/models/card/set-vocabulary';
+import { buildVocabularyExpansion } from '../../../shared/models/discovery/vocabulary-expansion';
 import { cardArtUri } from '../../../shared/models/card/card.art';
 import {
   buildThemePreviewPageView,
@@ -49,6 +51,7 @@ export class SetThemePreviewComponent implements AfterViewInit, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
 
   public readonly pool = input.required<readonly MtgCard[]>();
+  public readonly vocabulary = input<readonly SetVocabulary[]>([]);
   public readonly selectedTheme = input<string | null>(null);
 
   public readonly themeClear = output<string>();
@@ -73,12 +76,18 @@ export class SetThemePreviewComponent implements AfterViewInit, OnDestroy {
   private themePreviewStageEl?: HTMLElement;
 
   private readonly pool$ = toObservable(this.pool);
+  private readonly vocabulary$ = toObservable(this.vocabulary);
   private readonly selectedTheme$ = toObservable(this.selectedTheme);
 
   private readonly themePreview$ = combineLatest({
     pool: this.pool$,
-    theme: this.selectedTheme$
-  }).pipe(map(({ pool, theme }) => buildThemePreviewState(pool, theme)));
+    theme: this.selectedTheme$,
+    vocabulary: this.vocabulary$
+  }).pipe(
+    map(({ pool, theme, vocabulary }) =>
+      buildThemePreviewState(pool, theme, buildVocabularyExpansion(vocabulary ?? [], pool))
+    )
+  );
 
   public readonly pageView$ = combineLatest({
     preview: this.themePreview$,
