@@ -64,6 +64,11 @@
   font-size: 0.75rem;
 }
 
+.pattern-needs {
+  color: var(--deck-muted);
+  font-size: 0.75rem;
+}
+
 .pattern-gold {
   color: var(--deck-gold);
   font-size: 0.75rem;

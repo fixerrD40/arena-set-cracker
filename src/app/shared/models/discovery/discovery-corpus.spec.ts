@@ -50,6 +50,17 @@ describe('discovery-corpus', () => {
     expect(discoveryTypeTokens('Creature — Elf')).toEqual(['elf']);
   });
 
+  it('counts legendary on the type line as an Is token', () => {
+    expect(discoveryTypeTokens('Legendary Creature — Human Advisor')).toEqual([
+      'legendary',
+      'human',
+      'advisor'
+    ]);
+    expect(cardHasDiscoveryTypeToken(card('Legendary Creature — Human Advisor', ''), 'legendary')).toBe(
+      true
+    );
+  });
+
   it('keeps printed keywords as their own chunk', () => {
     const flyer = { ...card('Creature — Bird', 'Flying'), keywords: ['Flying'] };
     const chunks = discoveryTextChunks(flyer);

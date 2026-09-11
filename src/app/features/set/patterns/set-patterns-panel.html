@@ -30,6 +30,9 @@
           @if (patternState().scoped) {
             <span class="pattern-lift">{{ pattern.lift | number: '1.1-1' }}×</span>
           }
+          @if (pattern.needsRarity) {
+            <span class="pattern-needs">{{ pattern.needsRarity }}</span>
+          }
           @if (pattern.goldCount > 0) {
             <span class="pattern-gold">{{ pattern.goldCount }} gold</span>
           }

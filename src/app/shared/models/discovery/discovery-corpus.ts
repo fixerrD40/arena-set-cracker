@@ -4,11 +4,16 @@ import { foldPlurals, tokenizeNormalizedText } from './oracle-diction';
 import { flattenOracleText } from './oracle-parser';
 
 export function discoveryTypeTokens(typeLine: string): string[] {
-  const subtypeText = subtypesOnTypeLine(typeLine).join(' ');
-  if (!subtypeText.trim()) {
-    return [];
+  const tokens: string[] = [];
+  // Legendary is a supertype, not a subtype after the dash — still the Is half of that theme.
+  if (/\blegendary\b/i.test(typeLine)) {
+    tokens.push(...foldPlurals(tokenizeNormalizedText('legendary')));
   }
-  return foldPlurals(tokenizeNormalizedText(subtypeText));
+  const subtypeText = subtypesOnTypeLine(typeLine).join(' ');
+  if (subtypeText.trim()) {
+    tokens.push(...foldPlurals(tokenizeNormalizedText(subtypeText)));
+  }
+  return tokens;
 }
 
 /** Parsed oracle only — trigger subjects, condition subjects, leaf effects. */
