@@ -5,8 +5,15 @@ import { FormsModule } from '@angular/forms';
 import { BehaviorSubject, combineLatest, map } from 'rxjs';
 import { DeckService } from '../../core/services/deck.service';
 import { SetService } from '../../core/services/set.service';
+import { CommunityService } from '../../core/services/community.service';
 import { DeckValidationResult } from '../../shared/models/deck/deck';
-import { ColorDisplayNames } from '../../shared/models/color';
+import { Color, ColorDisplayNames } from '../../shared/models/color';
+import { remainingPoolCards } from '../../shared/models/discovery/remaining-pool';
+import {
+  CommunitySuggestions,
+  emptyCommunitySuggestions,
+  joinCommunitySuggestions
+} from '../../shared/models/discovery/community-suggestions';
 import {
   ArenaCollectionFilter,
   COLLECTION_RARITIES,
@@ -19,10 +26,13 @@ import {
 } from '../../shared/models/card/arena-collection.filter';
 import { CMC_BUCKETS, CmcBucket } from '../../shared/models/card/card.mana';
 import { MtgCard } from '../../shared/models/card/card';
+import { buildVocabularyExpansion } from '../../shared/models/discovery/vocabulary-expansion';
 import { showsInfinityCopyMark } from '../../shared/models/deck/deck.copy-limit';
 import { summarizeDeck } from '../../shared/models/deck/deck.stats';
+import { buildThemeLaneColumns } from '../../shared/models/discovery/theme-lanes';
 import { DeckDetailsComponent } from './details/deck-details.component';
 import { DeckContentsComponent } from './contents/deck-contents.component';
+import { DeckThemeStageComponent } from './theme/deck-theme-stage.component';
 import { CDK_DRAG_CONFIG, CdkDragEnd, CdkDragMove, DragDropModule } from '@angular/cdk/drag-drop';
 import { DeckBuilderDrag, DeckDragPayload, isDragGesture } from './deck.drag';
 import { CardHoverPreviewComponent } from '../../shared/ui/card-hover-preview/card-hover-preview.component';
@@ -42,6 +52,7 @@ import {
     DragDropModule,
     DeckDetailsComponent,
     DeckContentsComponent,
+    DeckThemeStageComponent,
     CardHoverPreviewComponent
   ],
   providers: [
@@ -55,6 +66,7 @@ import {
 export class DeckComponent implements OnDestroy {
   private readonly deckService = inject(DeckService);
   private readonly setService = inject(SetService);
+  private readonly community = inject(CommunityService);
   private readonly router = inject(Router);
   public readonly drag = inject(DeckBuilderDrag);
   private readonly ngZone = inject(NgZone);
@@ -77,6 +89,8 @@ export class DeckComponent implements OnDestroy {
   public readonly collectionPageSize = 8;
 
   public filter: ArenaCollectionFilter = emptyArenaCollectionFilter();
+  public builderPage: 'library' | 'theme' | 'suggestions' = 'library';
+  public selectedTheme: string | null = null;
   public screen: 'builder' | 'details' = 'builder';
   public hoveredCard: MtgCard | null = null;
   public previewTop = 0;
@@ -84,6 +98,7 @@ export class DeckComponent implements OnDestroy {
   public previewWidth = 0;
 
   private readonly collectionFilter$ = new BehaviorSubject<ArenaCollectionFilter>(this.filter);
+  private readonly selectedTheme$ = new BehaviorSubject<string | null>(null);
   private readonly collectionPage$ = new BehaviorSubject(0);
   private collectionStageEl?: HTMLElement;
   private collectionPageIndex = 0;
@@ -96,15 +111,58 @@ export class DeckComponent implements OnDestroy {
   public readonly filteredCards$ = combineLatest({
     lines: this.deckService.catalogLines$,
     filter: this.collectionFilter$,
-    deck: this.deckService.scratchpadDeck$
+    workspace: this.workspace$
   }).pipe(
-    map(({ lines, filter, deck }) => {
-      const theme =
-        filter.theme && deck?.themes.includes(filter.theme) ? filter.theme : null;
-      const effective = theme === filter.theme ? filter : { ...filter, theme };
+    map(({ lines, filter, workspace }) => {
+      const expansion = buildVocabularyExpansion(
+        workspace?.vocabulary ?? [],
+        workspace?.cards ?? []
+      );
       return lines
-        .filter((line) => cardMatchesArenaCollectionFilter(line.card, effective))
+        .filter((line) => cardMatchesArenaCollectionFilter(line.card, { ...filter, theme: null }, expansion))
         .sort((a, b) => compareArenaCollection(a.card, b.card));
+    })
+  );
+
+  public readonly themeStage$ = combineLatest({
+    lines: this.deckService.catalogLines$,
+    filter: this.collectionFilter$,
+    theme: this.selectedTheme$,
+    workspace: this.workspace$
+  }).pipe(
+    map(({ lines, filter, theme, workspace }) => {
+      if (!theme) {
+        return { theme: null, columns: [] };
+      }
+      const expansion = buildVocabularyExpansion(
+        workspace?.vocabulary ?? [],
+        workspace?.cards ?? []
+      );
+      const members = lines.filter((line) =>
+        cardMatchesArenaCollectionFilter(line.card, { ...filter, theme }, expansion)
+      );
+      return {
+        theme,
+        columns: buildThemeLaneColumns(members, theme, expansion)
+      };
+    })
+  );
+
+  public readonly communitySuggestions$ = combineLatest({
+    community: this.community.community$,
+    deck: this.deckService.scratchpadDeck$,
+    workspace: this.workspace$
+  }).pipe(
+    map(({ community, deck, workspace }): CommunitySuggestions => {
+      if (!community || !deck || !workspace) {
+        return emptyCommunitySuggestions();
+      }
+      return joinCommunitySuggestions(
+        community,
+        deck,
+        workspace.cards,
+        remainingPoolCards(workspace.cards, workspace.decks)
+      );
     })
   );
 
@@ -188,17 +246,31 @@ export class DeckComponent implements OnDestroy {
   }
 
   public isThemeApplied(theme: string): boolean {
-    return this.filter.theme === theme;
+    return this.selectedTheme === theme;
   }
 
   public applyTheme(theme: string): void {
-    this.pushFilter({ ...this.filter, theme: this.filter.theme === theme ? null : theme });
+    this.selectedTheme = this.selectedTheme === theme ? null : theme;
+    this.selectedTheme$.next(this.selectedTheme);
+  }
+
+  public openBuilderPage(page: 'library' | 'theme' | 'suggestions'): void {
+    this.builderPage = page;
+    if (page === 'theme' && !this.selectedTheme) {
+      const attached = this.deckService.scratchpadValue?.themes ?? [];
+      if (attached[0]) {
+        this.selectedTheme = attached[0];
+        this.selectedTheme$.next(attached[0]);
+      }
+    }
+  }
+
+  public colorName(color: string): string {
+    return ColorDisplayNames[color as Color] ?? color;
   }
 
   public extrasActive(): boolean {
-    const attached = this.deckService.scratchpadValue?.themes ?? [];
-    const themeOn = !!this.filter.theme && attached.includes(this.filter.theme);
-    return this.filter.rarities.length > 0 || this.filter.cmcBuckets.length > 0 || themeOn;
+    return this.filter.rarities.length > 0 || this.filter.cmcBuckets.length > 0;
   }
 
   public toggleExtras(): void {

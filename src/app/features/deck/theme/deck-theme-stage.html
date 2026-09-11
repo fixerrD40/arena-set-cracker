@@ -1,0 +1,48 @@
+<div class="theme-stage" [attr.aria-label]="'Theme ' + theme()">
+  @for (column of columns(); track column.lane) {
+    <section class="theme-lane" [attr.data-lane]="column.lane">
+      <h3 class="theme-lane-label">{{ column.label }}</h3>
+      <div class="theme-lane-cards" cdkDropList cdkDropListSortingDisabled [cdkDropListAutoScrollDisabled]="true">
+        @for (item of column.cards; track item.card.id) {
+          <button
+            type="button"
+            class="theme-card"
+            (click)="addCard.emit(item.card)"
+            (mouseenter)="cardEnter.emit({ event: $event, card: item.card })"
+            (mouseleave)="cardLeave.emit()"
+            [attr.aria-label]="'Add ' + item.card.name"
+          >
+            <div class="owned-row" aria-hidden="true">
+              @if (showsInfinityCopyMark(item.card)) {
+                <span class="owned-infinity">∞</span>
+              } @else {
+                @for (pip of copyPips; track pip) {
+                  <span class="owned-pip" [class.filled]="item.quantity >= pip"></span>
+                }
+              }
+            </div>
+            <div
+              class="theme-face"
+              cdkDrag
+              [cdkDragData]="collectionDrag(item.card)"
+              (cdkDragStarted)="dragStart.emit()"
+              (cdkDragMoved)="dragMove.emit($event)"
+              (cdkDragEnded)="dragEnd.emit($event)"
+            >
+              @if (item.card.localArtUri) {
+                <img [src]="item.card.localArtUri" [alt]="item.card.name" />
+              } @else {
+                <div class="card-fallback">
+                  <strong>{{ item.card.name }}</strong>
+                  <span>{{ item.card.typeLine }}</span>
+                </div>
+              }
+            </div>
+          </button>
+        }
+      </div>
+    </section>
+  } @empty {
+    <p class="theme-empty">No cards in this set sit under {{ theme() }}.</p>
+  }
+</div>

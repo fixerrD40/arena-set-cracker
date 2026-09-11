@@ -1,0 +1,117 @@
+:host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.theme-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.theme-lane {
+  flex: 1 1 10rem;
+  min-width: 9.5rem;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--deck-line);
+  border-radius: 10px;
+  background: var(--deck-panel);
+  overflow: hidden;
+}
+
+.theme-lane-label {
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--deck-muted);
+  border-bottom: 1px solid var(--deck-line);
+}
+
+.theme-lane-cards {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem;
+}
+
+.theme-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.theme-face {
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.theme-face img,
+.card-fallback {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.card-fallback {
+  min-height: 8rem;
+  padding: 0.5rem;
+  background: #1c1c1c;
+  color: var(--deck-fg);
+  text-align: left;
+}
+
+.card-fallback strong,
+.card-fallback span {
+  display: block;
+}
+
+.owned-row {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.25rem;
+  z-index: 1;
+  display: flex;
+  gap: 0.15rem;
+}
+
+.owned-pip {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  border: 1px solid #111;
+  background: rgb(255 255 255 / 35%);
+}
+
+.owned-pip.filled {
+  background: #f0c14b;
+}
+
+.owned-infinity {
+  font-size: 0.7rem;
+  line-height: 1;
+  color: #f0c14b;
+}
+
+.theme-empty {
+  margin: auto;
+  color: var(--deck-muted);
+  font-size: 0.9rem;
+}
