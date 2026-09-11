@@ -56,6 +56,7 @@ The focused set is the only denominator. Nothing aggregates across sets.
 | Local vault CRUD + sync enqueue | `VaultStore` |
 | Outbox drain → server | `SyncService` |
 | Vault host (browser / Electron / Capacitor) | `VAULT_ENGINE_TOKEN` → `BrowserVaultEngine` / `ElectronVaultEngine` / `CapacitorVaultEngine` |
+| Community rollup join (open deck) | `community-suggestions.ts`, `CommunityService` |
 | Shared CSS shell (auth/forms) | `shared/styles/auth-shell.css`, tokens in `styles.css` |
 | App chrome / content-area bounds | `--app-chrome-height`, `[data-app-content]`, `shared/ui/layout/content-area.ts` |
 

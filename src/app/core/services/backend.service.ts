@@ -4,6 +4,7 @@ import { Observable, from } from 'rxjs';
 import { toArray, switchMap, map } from 'rxjs/operators';
 import { AppConfigService } from '../config/config.service';
 import { UserProfileService } from './user-profile.service';
+import { SetCommunity } from '../../shared/models/discovery/set-community';
 
 @Injectable({
   providedIn: 'root',
@@ -21,6 +22,10 @@ export class BackendService {
   /** Hydrates browser SQLite from a remote collection snapshot after login. */
   public fetchCollectionFromServer<T>(segment: string, contextId: string | number): Observable<T[]> {
     return this.http.get<T[]>(`${this.baseUrl}/api/${segment}?contextId=${contextId}`);
+  }
+
+  public fetchSetCommunity(setId: string): Observable<SetCommunity> {
+    return this.http.get<SetCommunity>(`${this.baseUrl}/api/sets/${setId}/community`);
   }
 
   /**

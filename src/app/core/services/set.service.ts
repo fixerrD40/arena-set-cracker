@@ -30,6 +30,7 @@ import { mapDeckToJson, mapJsonToDeck, mapRowToDeck } from '../../shared/models/
 import { classifyHydrate } from '../../shared/models/sync-timestamp';
 import { OutboxEnvelope } from '../vault/vault.engine';
 import { DeckConflictService } from './deck-conflict.service';
+import { CommunityService } from './community.service';
 
 /** Live install progress for the install-set screen (card-count downloading). */
 export interface SetInstallProgress {
@@ -60,6 +61,7 @@ export class SetService implements OnDestroy {
   private readonly sync = inject(SyncService);
   private readonly config = inject(AppConfigService);
   private readonly deckConflicts = inject(DeckConflictService);
+  private readonly community = inject(CommunityService);
 
   private rosterSubscription?: Subscription;
   private workspaceSubscription?: Subscription;
@@ -239,6 +241,9 @@ export class SetService implements OnDestroy {
       tap((workspace) => {
         if (this.inFlightSetId === setId) {
           this.activeContextSubject.next(workspace);
+          if (workspace) {
+            this.community.load(workspace.setInfo.id);
+          }
         }
       }),
       catchError((err) => {
