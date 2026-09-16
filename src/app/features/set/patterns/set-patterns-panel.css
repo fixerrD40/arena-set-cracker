@@ -58,8 +58,14 @@
   cursor: grabbing;
 }
 
-.pattern-count {
+.pattern-count,
+.pattern-lift {
   color: var(--deck-dim);
+  font-size: 0.75rem;
+}
+
+.pattern-gold {
+  color: var(--deck-gold);
   font-size: 0.75rem;
 }
 

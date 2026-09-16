@@ -43,6 +43,16 @@ export const cards = sqliteTable('cards', {
   toughness: text('toughness').notNull().default(''),
 });
 
+/** Token and helper objects for the focused set. Vocabulary, never catalog. */
+export const setVocabulary = sqliteTable('set_vocabulary', {
+  id: text('id').primaryKey(),
+  setId: text('set_id').notNull().references(() => sets.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  typeLine: text('type_line').notNull().default(''),
+  oracleText: text('oracle_text').notNull().default(''),
+  keywords: text('keywords', { mode: 'json' }).$type<string[]>().notNull().default(sql`'[]'`),
+});
+
 export const decks = sqliteTable('decks', {
   id: text('id').primaryKey(),
   setId: text('set_id').notNull().references(() => sets.id, { onDelete: 'cascade' }),
@@ -87,6 +97,7 @@ export const syncQueue = sqliteTable('sync_queue', {
 export type SystemConfigRow = typeof systemConfig.$inferSelect;
 export type SetRow = typeof sets.$inferSelect;
 export type CardRow = typeof cards.$inferSelect;
+export type SetVocabularyRow = typeof setVocabulary.$inferSelect;
 export type DeckRow = typeof decks.$inferSelect;
 export type DeckCardRow = typeof deckCards.$inferSelect;
 export type SyncConflictRow = typeof syncConflicts.$inferSelect;
@@ -95,6 +106,7 @@ export type SyncQueueRow = typeof syncQueue.$inferSelect;
 export type SystemConfigInsert = typeof systemConfig.$inferInsert;
 export type SetInsert = typeof sets.$inferInsert;
 export type CardInsert = typeof cards.$inferInsert;
+export type SetVocabularyInsert = typeof setVocabulary.$inferInsert;
 export type DeckInsert = typeof decks.$inferInsert;
 export type DeckCardInsert = typeof deckCards.$inferInsert;
 export type SyncConflictInsert = typeof syncConflicts.$inferInsert;

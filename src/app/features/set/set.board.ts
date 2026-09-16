@@ -3,8 +3,10 @@ import { Observable, of } from 'rxjs';
 
 import { WorkspaceState } from '../../core/services/set.service';
 import { MtgCard } from '../../shared/models/card/card';
+import { SetVocabulary } from '../../shared/models/card/set-vocabulary';
 import { compareArenaCollection, ManaColor } from '../../shared/models/card/arena-collection.filter';
 import { ConcentratedPattern, scheduleConcentrate } from '../../shared/models/discovery/concentration';
+import { EmergentPattern } from '../../shared/models/discovery/scope-emergence';
 import {
   remainingPoolCards,
   remainingPoolCounts
@@ -17,6 +19,7 @@ import {
   cardsMatchingOracleTheme,
   minSignificantThemeCards
 } from '../../shared/models/discovery/theme-match';
+import { VocabularyExpansion } from '../../shared/models/discovery/vocabulary-expansion';
 import { DECK_STATUSES, DeckStatus, MtgDeck } from '../../shared/models/deck/deck';
 import { MTG_CARD_ASPECT } from '../../shared/ui/card-hover-preview/card-hover-preview.layout';
 
@@ -25,13 +28,20 @@ export interface SetBoardShell {
   total: number;
   scoped: number;
   pool: MtgCard[];
+  vocabulary: SetVocabulary[];
   decksByStatus: Record<DeckStatus, MtgDeck[]>;
   metrics: SetAssignmentMetrics;
 }
 
-export interface PatternState {
+export interface ConcentrateState {
   patterns: ConcentratedPattern[];
   loading: boolean;
+}
+
+export interface PatternState {
+  patterns: EmergentPattern[];
+  loading: boolean;
+  scoped: boolean;
 }
 
 export interface ThemePreviewLayout {
@@ -109,6 +119,7 @@ export function buildBoardShell(
     total: counts.total,
     scoped: counts.scoped,
     pool,
+    vocabulary: workspace.vocabulary,
     decksByStatus: groupDecksByStatus(workspace.decks),
     metrics: computeSetAssignmentMetrics(workspace.cards, workspace.decks)
   };
@@ -120,6 +131,7 @@ export function emptyBoardShell(): SetBoardShell {
     total: 0,
     scoped: 0,
     pool: [],
+    vocabulary: [],
     decksByStatus: {
       concept: [],
       'needs-work': [],
@@ -148,12 +160,16 @@ export function isDeckDragData(data: unknown): data is MtgDeck {
   return !!data && typeof data === 'object' && 'id' in data && 'status' in data;
 }
 
-export function buildThemePreviewState(pool: readonly MtgCard[], theme: string | null): ThemePreviewState {
+export function buildThemePreviewState(
+  pool: readonly MtgCard[],
+  theme: string | null,
+  expansion?: VocabularyExpansion | null
+): ThemePreviewState {
   if (!theme) {
     return { theme: null, cards: [], emptyReason: 'none', matchCount: 0, minRequired: 0 };
   }
 
-  const matches = cardsMatchingOracleTheme(pool, theme).sort(compareArenaCollection);
+  const matches = cardsMatchingOracleTheme(pool, theme, expansion).sort(compareArenaCollection);
   const minRequired = minSignificantThemeCards(pool.length);
   if (matches.length >= minRequired) {
     return { theme, cards: matches, emptyReason: 'none', matchCount: matches.length, minRequired };
@@ -232,17 +248,21 @@ export function computeThemePreviewLayout(stage: HTMLElement): ThemePreviewLayou
   };
 }
 
-export function discoverPatterns(pool: readonly MtgCard[], ngZone: NgZone): Observable<PatternState> {
+export function discoverPatterns(
+  pool: readonly MtgCard[],
+  ngZone: NgZone,
+  vocabulary: readonly SetVocabulary[] = []
+): Observable<ConcentrateState> {
   if (pool.length === 0) {
     return of({ patterns: [], loading: false });
   }
 
-  return new Observable<PatternState>((subscriber) => {
+  return new Observable<ConcentrateState>((subscriber) => {
     let cancelled = false;
     subscriber.next({ patterns: [], loading: true });
 
     ngZone.runOutsideAngular(() => {
-      void scheduleConcentrate(pool)
+      void scheduleConcentrate(pool, vocabulary)
         .then((patterns) => {
           if (cancelled) {
             return;

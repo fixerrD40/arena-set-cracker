@@ -55,6 +55,12 @@ describe('cardMatchesTheme', () => {
     expect(cardMatchesOracleTheme(ring, 'the one ring')).toBe(false);
   });
 
+  it('matches printed keywords as chips', () => {
+    const flyer = { ...card(''), keywords: ['Flying'] };
+    expect(cardMatchesOracleTheme(flyer, 'flying')).toBe(true);
+    expect(cardMatchesOracleTheme(card(''), 'flying')).toBe(false);
+  });
+
   it('matches tribal subtype tokens from the type line', () => {
     const elf = {
       ...card('Draw a card.'),

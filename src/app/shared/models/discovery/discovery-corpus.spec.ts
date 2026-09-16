@@ -1,5 +1,11 @@
 import { subtypesOnTypeLine } from '../card/type-line';
-import { discoveryOracleChunks, discoveryTextChunks, discoveryTypeTokens, cardHasDiscoveryTypeToken } from './discovery-corpus';
+import {
+  cardHasDiscoveryKeyword,
+  cardHasDiscoveryTypeToken,
+  discoveryOracleChunks,
+  discoveryTextChunks,
+  discoveryTypeTokens
+} from './discovery-corpus';
 import { MtgCard } from '../card/card';
 
 function card(typeLine: string, oracleText: string): MtgCard {
@@ -42,5 +48,18 @@ describe('discovery-corpus', () => {
 
   it('tokenizes subtype words for tribal matching', () => {
     expect(discoveryTypeTokens('Creature — Elf')).toEqual(['elf']);
+  });
+
+  it('keeps printed keywords as their own chunk', () => {
+    const flyer = { ...card('Creature — Bird', 'Flying'), keywords: ['Flying'] };
+    const chunks = discoveryTextChunks(flyer);
+    expect(chunks[chunks.length - 1]).toEqual(['flying']);
+    expect(cardHasDiscoveryKeyword(flyer, 'flying')).toBe(true);
+  });
+
+  it('keeps a multi-word keyword as one phrase', () => {
+    const ring = { ...card('Legendary Artifact', 'The Ring tempts you.'), keywords: ['The Ring tempts you'] };
+    expect(cardHasDiscoveryKeyword(ring, 'the ring tempts you')).toBe(true);
+    expect(cardHasDiscoveryKeyword(ring, 'you')).toBe(false);
   });
 });

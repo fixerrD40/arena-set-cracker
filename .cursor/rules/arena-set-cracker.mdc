@@ -15,9 +15,21 @@ Happy path today: install a set (Scryfall) → open it → paste an Arena export
 
 Color identity is not capped at two; do not bake guild/dual as the only shape of a deck.
 
-**Client** owns discovery tooling against the local catalog: oracle-text analysis and, later, real NLP. User-supplied source text (the work WotC adapted—e.g. a chapter the user provides, not a bundled book) is a valid slice against the focused set. Do not hide the catalog behind an emergence score.
+**Client** owns discovery against the local catalog: parsed oracle text. Dragging `human` surfaced a red/white group; a reader of the books recognized the Rohirrim and a Pelennor Fields deck followed. The tool stopped at the mechanical slice.
 
-**Backend** is for community-aggregated insight (e.g. pairing rates: “60% of players put this card with a card already in your deck”), not for streaming Scryfall or running the user’s discovery job.
+**Backend** is community-aggregated insight (pairing rates, copy spread), not Scryfall and not the user's discovery job.
+
+## Discovery
+
+A theme is a **filter the user consults**. Concentrate the focused set into chips: a phrase, a channel, the matching cards, and a **zone** (how concentrated those cards' color identities are—floor first; empty identity fits everywhere). One card is not a filter; most of the pool is not a filter; a dozen cards that belong together is one. Prefer over-merging to fragmentation.
+
+Three sources. **Cold** is the catalog. **Local** is this user's assignment state. **Warm** is the aggregate. Cold reads printed fields; warm is how people built. Layers report independently—the same token may appear in more than one.
+
+The user attaches themes, or doesn't. Dragging, toggling, and hand-picking with no filter are all live. Attached themes compose by **grouping**: cards under the theme that caught them, groups ordered by zoning, residue shown beside. **Untracked** is the diff between themes the deck's cards match and themes attached. Suggestion may update as cards are placed; the pool narrows when the user attaches.
+
+Warm adds columns to those rows: copy spread and `cardId`-keyed pairing lift. Provenance is per card and nullable. Vocabulary harvests itself from reminder text and companion token objects—vocabulary, never catalog. **Keywords are chips, not roles**—present `flying` and `trample`; a player reads whether they are the clock. Named helpers stay nodes (`Food`, the Ring) and bridge to the text they contain. Basic lands are out of slices.
+
+The focused set is the only denominator. Nothing aggregates across sets.
 
 ## Stack map
 
@@ -34,7 +46,9 @@ Color identity is not capped at two; do not bake guild/dual as the only shape of
 | Installed sets + active workspace (set, cards, decks) | `SetService` |
 | Active deck scratchpad + flush/persist | `DeckService` |
 | Arena parse + name resolve within catalog | `shared/models/deck/deck.utils.ts` |
+| Oracle parse → trigger / condition / effect chunks | `oracle-parser.ts`, `oracle-diction.ts`, `discovery-corpus.ts` |
 | Remaining pool + pattern concentration | `remaining-pool.ts`, `concentration.ts` (+ `concentration.worker.ts`) |
+| Companion token/helper objects (vocabulary, not catalog) | `set_vocabulary`, `SetService.persistCompanionVocabulary`, `vocabulary-expansion.ts` |
 | Set board theme-phrase drag | `SetBoardDrag` |
 | Shared drag primitives | `shared/drag/drag.utils.ts` |
 | Deck builder card drag zones | `DeckBuilderDrag` |

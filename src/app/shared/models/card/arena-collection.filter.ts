@@ -1,5 +1,6 @@
 import { MtgCard } from './card';
 import { cardMatchesTheme } from '../discovery/theme-match';
+import { VocabularyExpansion } from '../discovery/vocabulary-expansion';
 import { CmcBucket, cmcBucket, compareByCmcThenName, getCmc } from './card.mana';
 
 export const MANA_COLORS = ['W', 'U', 'B', 'R', 'G'] as const;
@@ -111,7 +112,8 @@ export function compareArenaDeckList(a: MtgCard, b: MtgCard): number {
 
 export function cardMatchesArenaCollectionFilter(
   card: MtgCard,
-  filter: ArenaCollectionFilter
+  filter: ArenaCollectionFilter,
+  expansion?: VocabularyExpansion | null
 ): boolean {
   if (isBasicLand(card) && !filter.land) {
     return false;
@@ -133,7 +135,7 @@ export function cardMatchesArenaCollectionFilter(
     return false;
   }
 
-  if (filter.theme && !cardMatchesTheme(card, filter.theme)) {
+  if (filter.theme && !cardMatchesTheme(card, filter.theme, expansion)) {
     return false;
   }
 

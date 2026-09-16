@@ -3,7 +3,8 @@
  * lived in genesis. SQLite has no IF NOT EXISTS for columns; ignore duplicates.
  */
 export const TIP_CLOCK_SCHEMA_PATCH_STATEMENTS = [
-  `ALTER TABLE sets ADD COLUMN updated_at text DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+  // ALTER cannot use strftime() — SQLite allows only a constant default on ADD COLUMN.
+  `ALTER TABLE sets ADD COLUMN updated_at text DEFAULT ''`,
   `ALTER TABLE sets ADD COLUMN merge_base_updated_at text`,
   `ALTER TABLE decks ADD COLUMN updated_at text`,
   `ALTER TABLE decks ADD COLUMN merge_base_updated_at text`,

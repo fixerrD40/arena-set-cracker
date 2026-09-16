@@ -59,6 +59,34 @@ export class ScryfallService {
     return this.fetchAllPages(url);
   }
 
+  /** Token children of this code. Commander, promo, and art series stay out. */
+  public getCompanionSets(code: string): Observable<ScryfallSet[]> {
+    const parent = code.toLowerCase();
+    return this.http.get<{ data: ScryfallSet[] }>(`${this.baseUrl}/sets`, this.httpOptions).pipe(
+      map((response) =>
+        (response.data || [])
+          .map((raw) => new ScryfallSet(raw))
+          .filter(
+            (set) =>
+              set.parent_set_code?.toLowerCase() === parent && set.set_type === 'token'
+          )
+      )
+    );
+  }
+
+  /** Every printing in a token set — extras (emblems, DFC helpers) have no `game:arena` filter. */
+  public getSetPrintings(code: string): Observable<ScryfallCard[]> {
+    const url = `${this.baseUrl}/cards/search?q=set:${code.toLowerCase()}&include_extras=true`;
+    return this.fetchAllPages(url).pipe(
+      catchError((err) => {
+        if (err?.status === 404) {
+          return of([]);
+        }
+        return throwError(() => err);
+      })
+    );
+  }
+
   /** Follows Scryfall pagination with a 100ms delay between pages (rate limit). */
   private fetchAllPages(url: string, accumulated: ScryfallCard[] = []): Observable<ScryfallCard[]> {
     return this.http.get<{ has_more: boolean; next_page?: string; data: ScryfallCard[] }>(url, this.httpOptions).pipe(

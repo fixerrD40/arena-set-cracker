@@ -3,6 +3,8 @@ export class ScryfallSet {
   code!: string;
   name!: string;
   digital!: boolean;
+  set_type?: string;
+  parent_set_code?: string;
   released_at?: string;
   icon_svg_uri?: string;
 

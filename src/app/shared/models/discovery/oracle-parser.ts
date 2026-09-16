@@ -92,13 +92,7 @@ export function flattenParsedOracle(parsed: readonly ParsedEffect[]): FlattenedO
   const effects: string[] = [];
 
   for (const entry of parsed) {
-    for (const clause of entry.clauses ?? []) {
-      if (clause.type === TRIGGER) {
-        triggers.push(...clause.subjects);
-      } else if (clause.type === CONDITION) {
-        conditions.push(...clause.subjects);
-      }
-    }
+    collectClauses(entry, triggers, conditions);
 
     if (entry.effects) {
       effects.push(...extractLeafEffects(entry.effects));
@@ -108,6 +102,22 @@ export function flattenParsedOracle(parsed: readonly ParsedEffect[]): FlattenedO
   }
 
   return { triggers, conditions, effects };
+}
+
+function collectClauses(entry: ParsedEffect, triggers: string[], conditions: string[]): void {
+  for (const clause of entry.clauses ?? []) {
+    if (clause.type === TRIGGER) {
+      triggers.push(...clause.subjects);
+    } else if (clause.type === CONDITION) {
+      conditions.push(...clause.subjects);
+    }
+  }
+  for (const nested of entry.effects ?? []) {
+    collectClauses(nested, triggers, conditions);
+  }
+  if (entry.replacement) {
+    collectClauses(entry.replacement, triggers, conditions);
+  }
 }
 
 function stripKeywords(text: string, keywords: readonly string[]): { keywordText: string[]; remainder: string } {

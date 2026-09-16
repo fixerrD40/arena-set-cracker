@@ -1,5 +1,6 @@
 import { MtgCard } from '../card/card';
-import { discoveryTextChunks, discoveryTypeTokens } from './discovery-corpus';
+import { SetVocabulary } from '../card/set-vocabulary';
+import { discoveryKeywordPhrases, discoveryTextChunks, discoveryTypeTokens } from './discovery-corpus';
 import {
   foldPlurals,
   isStructuralPattern,
@@ -9,6 +10,11 @@ import {
   tokenizeNormalizedText
 } from './oracle-diction';
 import { cardMatchesOracleTheme, isSignificantThemeMatch } from './theme-match';
+import {
+  buildVocabularyExpansion,
+  vocabularyNodePhrases,
+  VocabularyExpansion
+} from './vocabulary-expansion';
 
 export interface ConcentratedPattern {
   phrase: string;
@@ -265,13 +271,23 @@ function tokenizedParsedChunks(cards: readonly MtgCard[]): string[][] {
   return chunks;
 }
 
-function subtypePatterns(cards: readonly MtgCard[], poolSize: number): ConcentratedPattern[] {
+function subtypePatterns(
+  cards: readonly MtgCard[],
+  poolSize: number,
+  expansion: VocabularyExpansion
+): ConcentratedPattern[] {
   const candidates = new Set<string>();
 
   for (const card of cards) {
     for (const token of discoveryTypeTokens(card.typeLine)) {
       candidates.add(token);
     }
+    for (const phrase of discoveryKeywordPhrases(card)) {
+      candidates.add(phrase);
+    }
+  }
+  for (const phrase of vocabularyNodePhrases(expansion)) {
+    candidates.add(phrase);
   }
 
   const patterns: ConcentratedPattern[] = [];
@@ -280,7 +296,7 @@ function subtypePatterns(cards: readonly MtgCard[], poolSize: number): Concentra
     if (isStructuralPattern(phrase)) {
       continue;
     }
-    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase)).length;
+    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase, expansion)).length;
     if (cardCount === 0 || !isSignificantThemeMatch(cardCount, poolSize)) {
       continue;
     }
@@ -330,15 +346,19 @@ function constructNgrams(tokenizedTexts: string[][], poolSize: number): Map<stri
   return generalizeNgrams(all, tokenizedTexts);
 }
 
-export function concentrate(cards: readonly MtgCard[]): ConcentratedPattern[] {
+export function concentrate(
+  cards: readonly MtgCard[],
+  vocabulary: readonly SetVocabulary[] = []
+): ConcentratedPattern[] {
   const poolSize = cards.length;
   if (poolSize === 0) {
     return [];
   }
 
+  const expansion = buildVocabularyExpansion(vocabulary, cards);
   const tokenizedTexts = tokenizedParsedChunks(cards);
   const ngrams = reduceNgrams(constructNgrams(tokenizedTexts, poolSize));
-  const patterns: ConcentratedPattern[] = [...subtypePatterns(cards, poolSize)];
+  const patterns: ConcentratedPattern[] = [...subtypePatterns(cards, poolSize, expansion)];
 
   for (const [key, hitCount] of ngrams) {
     const phrase = phraseToDisplay(ngramToTokens(JSON.parse(key) as Ngram));
@@ -346,7 +366,7 @@ export function concentrate(cards: readonly MtgCard[]): ConcentratedPattern[] {
     if (!phrase || phraseTokens.length < 2 || isStructuralPattern(phrase) || isWeakFragment(phraseTokens)) {
       continue;
     }
-    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase)).length;
+    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase, expansion)).length;
     if (cardCount === 0 || !isSignificantThemeMatch(cardCount, poolSize)) {
       continue;
     }
@@ -449,24 +469,28 @@ function isWeakFragment(tokens: readonly string[]): boolean {
 }
 
 /** Yield so the set board can paint loading, then concentrate off the UI thread. */
-export function scheduleConcentrate(cards: readonly MtgCard[]): Promise<ConcentratedPattern[]> {
+export function scheduleConcentrate(
+  cards: readonly MtgCard[],
+  vocabulary: readonly SetVocabulary[] = []
+): Promise<ConcentratedPattern[]> {
   const worker = ensureConcentrateWorker();
   if (!worker) {
     return new Promise((resolve) => {
-      setTimeout(() => resolve(concentrate(cards)), 0);
+      setTimeout(() => resolve(concentrate(cards, vocabulary)), 0);
     });
   }
 
   return new Promise((resolve, reject) => {
     const id = ++concentrateJobId;
     concentrateJobs.set(id, { resolve, reject });
-    worker.postMessage({ id, cards: [...cards] } satisfies ConcentrateJob);
+    worker.postMessage({ id, cards: [...cards], vocabulary: [...vocabulary] } satisfies ConcentrateJob);
   });
 }
 
 interface ConcentrateJob {
   id: number;
   cards: MtgCard[];
+  vocabulary: SetVocabulary[];
 }
 
 interface ConcentrateResult {

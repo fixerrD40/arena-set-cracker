@@ -2,13 +2,18 @@ import { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { getTableName } from 'drizzle-orm';
 import { serializeSetToSqlite, mapRowToSet } from '../../shared/models/set/set.mappers';
 import { mapCardToInsert, mapRowToCard } from '../../shared/models/card/card.mappers';
+import {
+  mapRowToVocabulary,
+  mapVocabularyToInsert
+} from '../../shared/models/card/set-vocabulary.mappers';
 import { mapDeckToInsert, mapRowToDeck } from '../../shared/models/deck/deck.mappers';
 import { mapProfileToInsert, mapRowToProfile } from '../../shared/models/user/user.mappers';
-import { DeckRow, SetRow, CardRow, SystemConfigRow } from './sqlite.schema';
+import { DeckRow, SetRow, CardRow, SetVocabularyRow, SystemConfigRow } from './sqlite.schema';
 
 const serializerRegistry = new Map<string, (domain: any) => any>([
   ['sets', serializeSetToSqlite],
   ['cards', mapCardToInsert],
+  ['set_vocabulary', mapVocabularyToInsert],
   ['decks', mapDeckToInsert],
   ['system_config', mapProfileToInsert]
 ]);
@@ -16,6 +21,7 @@ const serializerRegistry = new Map<string, (domain: any) => any>([
 const hydratorRegistry = new Map<string, (raw: Record<string, any>) => any>([
   ['sets', (raw) => mapRowToSet(raw as SetRow)],
   ['cards', (raw) => mapRowToCard(raw as CardRow)],
+  ['set_vocabulary', (raw) => mapRowToVocabulary(raw as SetVocabularyRow)],
   ['decks', (raw) => mapRowToDeck(raw as DeckRow)],
   ['system_config', (raw) => mapRowToProfile(raw as SystemConfigRow)]
 ]);
