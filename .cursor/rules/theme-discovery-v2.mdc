@@ -1,0 +1,54 @@
+---
+description: Working agreement for theme-discovery-v2. Deleted in the last commit on this branch.
+alwaysApply: true
+---
+
+# theme-discovery-v2
+
+This file is **branch-local**. It does not merge onto `main`. The last commit on `theme-discovery-v2` deletes it. In that same commit, copy anything that should outlive the branch into `.cursor/rules/arena-set-cracker.mdc` (Commits for flux-branch git; Discovery for catalog graph + cold chip grammar).
+
+## Flux branch
+
+Until this branch merges, it is a draft of the feature, not a diary.
+
+- Massage later corrections into the commit that first owned that objective.
+- Inverse pairs (land, then revert) do not ship.
+- Local `main` stays at `origin/main`. Work that landed on `main` by mistake is reset off `main` and kept here.
+- Force-push **this** remote after a rewrite. Never `main`.
+- No interactive rebase in this agent; rebuild onto named commits.
+- `arena-set-cracker.mdc` still says not to rewrite a remote — that means `main` and anything already merged. This feature remote is in flux.
+
+Short branches still fold into the unpushed commit. These bullets are for a branch that lives long enough to have a remote and a second session.
+
+## Catalog graph (data)
+
+The focused set is a `CatalogGraph`. Nodes are `card` (catalog id) and `phrase` (one normalized key for chips, deck pins, harvest, and `reviewFeed`). Helpers and keywords are phrases. Attaching a theme **pins a phrase**; it is not a stored type.
+
+Incidence edges are **native oracle**, not Theme lanes: card → phrase as `trigger` | `condition` | `effect` | `type` | `keyword` (`cost` when flatten stops dropping it). Harvest: phrase → phrase as `produce` | `count`. Warm: card → card as `pair` when community exists. `kind` lives on the edge.
+
+Wants / Needs / Is / Says is Theme **chrome** — an insight map over incidence. Do not store `says` on the graph (that collapses keyword-Says with leftover-effect Says). Lock-set is a query: `trigger` ∪ `condition` ∪ `effect`. Not `type`. Not `keyword`. Multicolor is presence of a lock card with two or more colors, not a gold census.
+
+Build per focused set on the client. Do not compile at ingest.
+
+## Passes and cuts (logic)
+
+Writers are `(graph, corpus) => graph` in `passes/`. Readers are insight cuts. Components do not harvest.
+
+Sibling modules, layered in time:
+
+- **Layer 0** — parse / diction / corpus. POS/frame tagging (verb `counter` vs noun `counter`) belongs here, before first-order mint. Glue-delete is the same slot. Not this rewrite.
+- **Layer 1** — mint chips via concentration as today; link incidence and harvest from printed frames. "The Ring tempts you appears on 51 cards" is incidence degree, not an NLP input.
+- **Layer 2** — phrase proximity from graph neighborhood. Not this rewrite.
+- **Layer 3** — `warm-pair`. Same pass contract; empty until `SetCommunity` is in hand. Do not block the graph on the network. Warm **links**, it does not mint chips.
+
+Two harvest shapes. **Produce:** the mechanic supplies a named object (Amass → Army; Ring `is legendary`). **Count:** `for each X` in the reminder means X enables the printed phrase (`human` feeds `affinity for humans`), not the reverse. `for each` is glue in concentration, not a theme chip. Do not fold it into `GLUE_PHRASES`.
+
+Do not derive rules consequences from a filter (The Battle of Bywater “spares” power &lt; 3). That relation is warm. Cold names Food and the printed scaler. Paraphrase NLP (health ≈ life) is not a layer.
+
+Keywords are chips from `keywords[]` plus oracle, not a per-set list. Join text from same-line reminder, companion faces, and helper oracle.
+
+Copy-peak and land color-fix are deck-health, not `pair` kinds. Provenance stays on the edge (`pair` vs `produce`).
+
+## Discovery cuts (UI parity)
+
+Same product, new owners. Set board: chips ranked by **concentration** (default, scoped count) or **emergence** (lift); sort only; show the number for the active knob; drag a chip onto a deck to pin. Library: equal grid. Theme: inspect one selected phrase as Wants/Needs/Is/Says. Suggestions: neighbors of the pinned set (`produce`, `count`, `pair`); feed click jumps to Theme. Do not merge the tabs in this rewrite.
