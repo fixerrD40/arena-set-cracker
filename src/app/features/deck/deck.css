@@ -16,6 +16,66 @@
   padding: 1rem 1.25rem 1.5rem;
 }
 
+.builder-tabs {
+  display: flex;
+  gap: 0.15rem;
+  margin-bottom: 0.65rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--deck-line);
+}
+
+.builder-tab {
+  border: none;
+  background: transparent;
+  color: var(--deck-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.7rem 0.5rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.builder-tab.on {
+  color: var(--deck-fg);
+  border-bottom-color: #7dce6a;
+}
+
+.suggestions-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+}
+
+.suggestion-row {
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--deck-fg);
+  background: var(--deck-panel);
+  border: 1px solid var(--deck-line);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+}
+
+button.suggestion-row {
+  cursor: pointer;
+}
+
+.theme-toolbar-empty {
+  color: var(--deck-muted);
+  font-size: 0.85rem;
+}
+
+.stage-empty {
+  margin: 1.5rem 0.25rem;
+}
+
 .collection-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -184,9 +244,27 @@
   color: #7dce6a;
 }
 
-.extras-empty {
-  color: var(--deck-dim);
-  font-size: 0.75rem;
+.theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.theme-chip {
+  border: 1px solid var(--deck-line);
+  background: transparent;
+  color: var(--deck-fg);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.theme-chip.on {
+  border-color: #7dce6a;
+  color: #7dce6a;
 }
 
 .collection-stage {

@@ -14,6 +14,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { DeckService } from '../../../core/services/deck.service';
+import { PatternRankMode } from '../../../shared/models/discovery/scope-emergence';
 import { PatternState } from '../set.board';
 import { SetBoardDrag } from '../set-board-drag';
 
@@ -37,12 +38,17 @@ export class SetPatternsPanelComponent implements OnDestroy {
   public readonly drawerOpen = input(true);
 
   public readonly themeSelect = output<string>();
+  public readonly rankModeChange = output<PatternRankMode>();
 
   public readonly themeReturnHot = this.drag.themeReturnHot;
 
   public ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  public onRankMode(rankMode: PatternRankMode): void {
+    this.rankModeChange.emit(rankMode);
   }
 
   public onPatternClick(phrase: string): void {

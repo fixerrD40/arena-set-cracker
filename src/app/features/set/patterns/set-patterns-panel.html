@@ -5,6 +5,26 @@
   [class.theme-return-hot]="themeReturnHot()"
 >
   <h2>Patterns</h2>
+  @if (patternState().scoped) {
+    <div class="pattern-rank" role="group" aria-label="Chip order">
+      <button
+        type="button"
+        class="pattern-rank-btn"
+        [class.selected]="patternState().rankMode === 'concentration'"
+        (click)="onRankMode('concentration')"
+      >
+        Concentration
+      </button>
+      <button
+        type="button"
+        class="pattern-rank-btn"
+        [class.selected]="patternState().rankMode === 'emergence'"
+        (click)="onRankMode('emergence')"
+      >
+        Emergence
+      </button>
+    </div>
+  }
   @if (patternState().loading) {
     <p class="empty-note">Finding patterns…</p>
   } @else if (patternState().patterns.length > 0) {
@@ -26,12 +46,17 @@
             </div>
           </ng-template>
           <span class="pattern-phrase">{{ pattern.phrase }}</span>
-          <span class="pattern-count">{{ pattern.scopedCount }}</span>
-          @if (patternState().scoped) {
+          @if (patternState().rankMode !== 'emergence') {
+            <span class="pattern-count">{{ pattern.scopedCount }}</span>
+          }
+          @if (patternState().scoped && patternState().rankMode === 'emergence') {
             <span class="pattern-lift">{{ pattern.lift | number: '1.1-1' }}×</span>
           }
+          @if (pattern.needsRarity) {
+            <span class="pattern-needs">{{ pattern.needsRarity }}</span>
+          }
           @if (pattern.goldCount > 0) {
-            <span class="pattern-gold">{{ pattern.goldCount }} gold</span>
+            <span class="pattern-gold">gold</span>
           }
         </div>
       }

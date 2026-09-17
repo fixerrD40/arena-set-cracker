@@ -6,7 +6,41 @@
         data-deck-drop="library"
         [class.library-drop-hot]="drag.zone() === 'library'"
       >
+        <div class="builder-tabs" role="tablist" aria-label="Builder pages">
+          <button
+            type="button"
+            role="tab"
+            class="builder-tab"
+            [class.on]="builderPage === 'library'"
+            [attr.aria-selected]="builderPage === 'library'"
+            (click)="openBuilderPage('library')"
+          >
+            Library
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="builder-tab"
+            [class.on]="builderPage === 'theme'"
+            [attr.aria-selected]="builderPage === 'theme'"
+            (click)="openBuilderPage('theme')"
+          >
+            Theme
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="builder-tab"
+            [class.on]="builderPage === 'suggestions'"
+            [attr.aria-selected]="builderPage === 'suggestions'"
+            (click)="openBuilderPage('suggestions')"
+          >
+            Suggestions
+          </button>
+        </div>
+
         <div class="collection-toolbar">
+          @if (builderPage === 'library') {
           <label class="collection-query">
             <span class="query-prefix">s:{{ (workspace$ | async)?.setInfo.code || '—' }}</span>
             <input
@@ -105,29 +139,89 @@
                       </button>
                     }
                   </div>
-                  <div class="extras-row extras-themes" role="group" aria-label="Themes">
-                    @if (scratchpadDeck$ | async; as deck) {
-                      @for (theme of deck.themes; track theme) {
-                        <button
-                          type="button"
-                          class="extras-chip"
-                          [class.on]="isThemeApplied(theme)"
-                          (click)="applyTheme(theme)"
-                          [attr.aria-pressed]="isThemeApplied(theme)"
-                        >
-                          {{ theme }}
-                        </button>
-                      } @empty {
-                        <span class="extras-empty">No themes attached</span>
-                      }
-                    }
-                  </div>
                 </div>
               }
             </div>
           </div>
+          } @else if (builderPage === 'theme') {
+            @if (scratchpadDeck$ | async; as deck) {
+              <div class="theme-chips" role="group" aria-label="Themes">
+                @for (theme of deck.themes; track theme) {
+                  <button
+                    type="button"
+                    class="theme-chip"
+                    [class.on]="isThemeApplied(theme)"
+                    (click)="applyTheme(theme)"
+                    [attr.aria-pressed]="isThemeApplied(theme)"
+                  >
+                    {{ theme }}
+                  </button>
+                } @empty {
+                  <span class="theme-toolbar-empty">Drag a theme onto this deck from the set board.</span>
+                }
+              </div>
+            }
+          }
         </div>
 
+        @if (builderPage === 'theme') {
+          @if (themeStage$ | async; as themeStage) {
+            @if (themeStage.theme) {
+              <app-deck-theme-stage
+                [theme]="themeStage.theme"
+                [columns]="themeStage.columns"
+                (addCard)="handleIncrementCard($event)"
+                (cardEnter)="showCollectionPreview($event.event, $event.card)"
+                (cardLeave)="clearCollectionPreview()"
+                (dragStart)="onCardDragStarted()"
+                (dragMove)="onCardDragMoved($event)"
+                (dragEnd)="onCardDragEnded($event)"
+              />
+            } @else {
+              <p class="theme-toolbar-empty stage-empty">Choose a theme to see Wants, Needs, Is, and Says.</p>
+            }
+          }
+        } @else if (builderPage === 'suggestions') {
+          @if (suggestionsBoard$ | async; as board) {
+            <div class="suggestions-stage" aria-label="Suggestions">
+              @for (feed of board.feeds; track feed.feeder + '\0' + feed.feeds) {
+                <button type="button" class="suggestion-row" (click)="reviewFeed(feed)">
+                  {{ feed.feeder }} feeds {{ feed.feeds }}
+                </button>
+              }
+              @if (board.suggestions.suggestCard; as suggest) {
+                <button type="button" class="suggestion-row" (click)="handleIncrementCard(suggest.card)">
+                  <strong>{{ suggest.card.name }}</strong>
+                  with {{ suggest.puller.name }} —
+                  {{ suggest.together }} of {{ suggest.deckCount }} decks
+                </button>
+              }
+              @if (board.suggestions.suggestReduce; as reduce) {
+                <p class="suggestion-row">
+                  {{ reduce.card.name }} at {{ reduce.copies }}; peak is {{ reduce.peak }} —
+                  {{ reduce.deckCount }} decks
+                </p>
+              }
+              @if (board.suggestions.colorFix; as fix) {
+                <p class="suggestion-row">
+                  @if (fix.kind === 'need-fixing') {
+                    Lands miss {{ colorName(fix.color) }}
+                  } @else {
+                    Lands show {{ colorName(fix.color) }} with no spells
+                  }
+                </p>
+              }
+              @if (
+                board.feeds.length === 0 &&
+                !board.suggestions.suggestCard &&
+                !board.suggestions.suggestReduce &&
+                !board.suggestions.colorFix
+              ) {
+                <p class="theme-toolbar-empty stage-empty">No suggestions for this list yet.</p>
+              }
+            </div>
+          }
+        } @else {
         <div
           #collectionStage
           class="collection-stage"
@@ -200,6 +294,8 @@
             >›</button>
           }
         </div>
+        }
+
       </section>
 
       <app-deck-contents (details)="openDetails()" />

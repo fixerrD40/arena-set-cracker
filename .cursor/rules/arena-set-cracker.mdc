@@ -48,6 +48,7 @@ The focused set is the only denominator. Nothing aggregates across sets.
 | Arena parse + name resolve within catalog | `shared/models/deck/deck.utils.ts` |
 | Oracle parse → trigger / condition / effect chunks | `oracle-parser.ts`, `oracle-diction.ts`, `discovery-corpus.ts` |
 | Remaining pool + pattern concentration | `remaining-pool.ts`, `concentration.ts` (+ `concentration.worker.ts`) |
+| Color-scope chip comments (lift, gold, Needs rarity) | `scope-emergence.ts` |
 | Companion token/helper objects (vocabulary, not catalog) | `set_vocabulary`, `SetService.persistCompanionVocabulary`, `vocabulary-expansion.ts` |
 | Set board theme-phrase drag | `SetBoardDrag` |
 | Shared drag primitives | `shared/drag/drag.utils.ts` |
@@ -56,6 +57,8 @@ The focused set is the only denominator. Nothing aggregates across sets.
 | Local vault CRUD + sync enqueue | `VaultStore` |
 | Outbox drain → server | `SyncService` |
 | Vault host (browser / Electron / Capacitor) | `VAULT_ENGINE_TOKEN` → `BrowserVaultEngine` / `ElectronVaultEngine` / `CapacitorVaultEngine` |
+| Community rollup join (open deck) | `community-suggestions.ts`, `CommunityService` |
+| Deck theme stage (Wants / Needs / Is / Says) | `theme-lanes.ts`, `DeckThemeStageComponent` |
 | Shared CSS shell (auth/forms) | `shared/styles/auth-shell.css`, tokens in `styles.css` |
 | App chrome / content-area bounds | `--app-chrome-height`, `[data-app-content]`, `shared/ui/layout/content-area.ts` |
 

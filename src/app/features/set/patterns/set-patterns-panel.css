@@ -25,6 +25,27 @@
   color: var(--deck-fg);
 }
 
+.pattern-rank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.pattern-rank-btn {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--deck-line);
+  background: transparent;
+  color: var(--deck-dim);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.pattern-rank-btn.selected {
+  border-color: var(--deck-gold);
+  color: var(--deck-fg);
+}
+
 .pattern-list {
   display: flex;
   flex-wrap: wrap;
@@ -61,6 +82,11 @@
 .pattern-count,
 .pattern-lift {
   color: var(--deck-dim);
+  font-size: 0.75rem;
+}
+
+.pattern-needs {
+  color: var(--deck-muted);
   font-size: 0.75rem;
 }
 

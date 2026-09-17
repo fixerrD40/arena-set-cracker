@@ -22,8 +22,8 @@ import { SetService } from '../../core/services/set.service';
 import { ManaColor } from '../../shared/models/card/arena-collection.filter';
 import { MtgDeck } from '../../shared/models/deck/deck';
 import { remainingPoolCards, remainingPoolSignature } from '../../shared/models/discovery/remaining-pool';
-import { emergePatterns } from '../../shared/models/discovery/scope-emergence';
-import { buildVocabularyExpansion, vocabularySignature } from '../../shared/models/discovery/vocabulary-expansion';
+import { emergePatterns, PatternRankMode } from '../../shared/models/discovery/scope-emergence';
+import { vocabularySignature } from '../../shared/models/discovery/build-catalog-graph';
 import { buildBoardShell, discoverPatterns } from './set.board';
 import { SetBoardDrag } from './set-board-drag';
 import { SetDecksDrawerComponent } from './decks/set-decks-drawer.component';
@@ -75,6 +75,7 @@ export class SetComponent implements OnInit, OnDestroy {
   private readonly colorScope$ = new BehaviorSubject<readonly ManaColor[]>([]);
   private readonly drainNeedsWork$ = new BehaviorSubject<boolean>(false);
   private readonly selectedTheme$ = new BehaviorSubject<string | null>(null);
+  private readonly rankMode$ = new BehaviorSubject<PatternRankMode>('concentration');
 
   public readonly boardShell$ = combineLatest({
     workspace: this.setService.activeContext$,
@@ -134,16 +135,18 @@ export class SetComponent implements OnInit, OnDestroy {
     baseline: this.baselinePatterns$,
     scoped: this.discoveryPool$,
     colors: this.colorScope$.asObservable(),
-    vocabulary: this.vocabulary$,
-    workspace: this.setService.activeContext$
+    graph: this.setService.catalogGraph$,
+    rankMode: this.rankMode$
   }).pipe(
-    map(({ baseline, scoped, colors, vocabulary, workspace }) => {
-      const rankByLift = colors.length > 0;
-      const expansion = buildVocabularyExpansion(vocabulary, workspace?.cards ?? []);
+    map(({ baseline, scoped, colors, graph, rankMode }) => {
+      const inColorScope = colors.length > 0;
       return {
         loading: baseline.loading,
-        scoped: rankByLift,
-        patterns: baseline.loading ? [] : emergePatterns(baseline.patterns, scoped, rankByLift, expansion)
+        scoped: inColorScope,
+        rankMode,
+        patterns: baseline.loading
+          ? []
+          : emergePatterns(baseline.patterns, scoped, inColorScope, graph, rankMode)
       };
     }),
     shareReplay({ bufferSize: 1, refCount: true })
@@ -230,6 +233,10 @@ export class SetComponent implements OnInit, OnDestroy {
 
   public onDrainNeedsWorkChange(enabled: boolean): void {
     this.drainNeedsWork$.next(enabled);
+  }
+
+  public setRankMode(rankMode: PatternRankMode): void {
+    this.rankMode$.next(rankMode);
   }
 
   public toggleThemeSelection(phrase: string): void {

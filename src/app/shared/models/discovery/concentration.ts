@@ -10,11 +10,9 @@ import {
   tokenizeNormalizedText
 } from './oracle-diction';
 import { cardMatchesOracleTheme, isSignificantThemeMatch } from './theme-match';
-import {
-  buildVocabularyExpansion,
-  vocabularyNodePhrases,
-  VocabularyExpansion
-} from './vocabulary-expansion';
+import { buildCatalogGraph } from './build-catalog-graph';
+import { CatalogGraph } from './graph/catalog-graph';
+import { vocabularyNodePhrases } from './passes/harvest';
 
 export interface ConcentratedPattern {
   phrase: string;
@@ -274,7 +272,7 @@ function tokenizedParsedChunks(cards: readonly MtgCard[]): string[][] {
 function subtypePatterns(
   cards: readonly MtgCard[],
   poolSize: number,
-  expansion: VocabularyExpansion
+  graph: CatalogGraph
 ): ConcentratedPattern[] {
   const candidates = new Set<string>();
 
@@ -286,7 +284,7 @@ function subtypePatterns(
       candidates.add(phrase);
     }
   }
-  for (const phrase of vocabularyNodePhrases(expansion)) {
+  for (const phrase of vocabularyNodePhrases(graph.phrases)) {
     candidates.add(phrase);
   }
 
@@ -296,7 +294,7 @@ function subtypePatterns(
     if (isStructuralPattern(phrase)) {
       continue;
     }
-    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase, expansion)).length;
+    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase, graph)).length;
     if (cardCount === 0 || !isSignificantThemeMatch(cardCount, poolSize)) {
       continue;
     }
@@ -355,10 +353,10 @@ export function concentrate(
     return [];
   }
 
-  const expansion = buildVocabularyExpansion(vocabulary, cards);
+  const graph = buildCatalogGraph(cards, vocabulary);
   const tokenizedTexts = tokenizedParsedChunks(cards);
   const ngrams = reduceNgrams(constructNgrams(tokenizedTexts, poolSize));
-  const patterns: ConcentratedPattern[] = [...subtypePatterns(cards, poolSize, expansion)];
+  const patterns: ConcentratedPattern[] = [...subtypePatterns(cards, poolSize, graph)];
 
   for (const [key, hitCount] of ngrams) {
     const phrase = phraseToDisplay(ngramToTokens(JSON.parse(key) as Ngram));
@@ -366,7 +364,7 @@ export function concentrate(
     if (!phrase || phraseTokens.length < 2 || isStructuralPattern(phrase) || isWeakFragment(phraseTokens)) {
       continue;
     }
-    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase, expansion)).length;
+    const cardCount = cards.filter((card) => cardMatchesOracleTheme(card, phrase, graph)).length;
     if (cardCount === 0 || !isSignificantThemeMatch(cardCount, poolSize)) {
       continue;
     }

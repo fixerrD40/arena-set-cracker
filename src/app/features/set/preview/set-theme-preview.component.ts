@@ -18,9 +18,9 @@ import { CommonModule } from '@angular/common';
 import { BehaviorSubject, combineLatest, map } from 'rxjs';
 import { shareReplay } from 'rxjs/operators';
 
+import { SetService } from '../../../core/services/set.service';
 import { MtgCard } from '../../../shared/models/card/card';
 import { SetVocabulary } from '../../../shared/models/card/set-vocabulary';
-import { buildVocabularyExpansion } from '../../../shared/models/discovery/vocabulary-expansion';
 import { cardArtUri } from '../../../shared/models/card/card.art';
 import {
   buildThemePreviewPageView,
@@ -49,6 +49,7 @@ export class SetThemePreviewComponent implements AfterViewInit, OnDestroy {
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly ngZone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly setService = inject(SetService);
 
   public readonly pool = input.required<readonly MtgCard[]>();
   public readonly vocabulary = input<readonly SetVocabulary[]>([]);
@@ -76,17 +77,14 @@ export class SetThemePreviewComponent implements AfterViewInit, OnDestroy {
   private themePreviewStageEl?: HTMLElement;
 
   private readonly pool$ = toObservable(this.pool);
-  private readonly vocabulary$ = toObservable(this.vocabulary);
   private readonly selectedTheme$ = toObservable(this.selectedTheme);
 
   private readonly themePreview$ = combineLatest({
     pool: this.pool$,
     theme: this.selectedTheme$,
-    vocabulary: this.vocabulary$
+    graph: this.setService.catalogGraph$
   }).pipe(
-    map(({ pool, theme, vocabulary }) =>
-      buildThemePreviewState(pool, theme, buildVocabularyExpansion(vocabulary ?? [], pool))
-    )
+    map(({ pool, theme, graph }) => buildThemePreviewState(pool, theme, graph))
   );
 
   public readonly pageView$ = combineLatest({

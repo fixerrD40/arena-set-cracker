@@ -7,7 +7,7 @@ import {
 } from './discovery-corpus';
 import { compareArenaCollection } from '../card/arena-collection.filter';
 import { NUM_TOKEN, phrasePatternTokens, tokenizeOracle } from './oracle-diction';
-import { VocabularyExpansion, vocabularyPhraseKey } from './vocabulary-expansion';
+import { CatalogGraph } from './graph/catalog-graph';
 
 /** Minimum share of the scoped pool a theme must cover to surface in discovery. */
 export const MIN_THEME_POOL_FRACTION = 0.02;
@@ -68,23 +68,21 @@ export function tokensMatchPattern(haystack: readonly string[], pattern: readonl
 export function cardMatchesTheme(
   card: MtgCard,
   phrase: string,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): boolean {
   const pattern = phrasePatternTokens(phrase);
   if (pattern.length === 0) {
     return true;
   }
   const haystack = discoveryHaystackTokens(card);
-  return (
-    tokensMatchPattern(haystack, pattern) || cardMatchesVocabularyBridge(haystack, phrase, expansion)
-  );
+  return tokensMatchPattern(haystack, pattern);
 }
 
 /** Parsed oracle plus card subtypes — concentration and set-board preview. */
 export function cardMatchesOracleTheme(
   card: MtgCard,
   phrase: string,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): boolean {
   const pattern = phrasePatternTokens(phrase);
   if (pattern.length === 0) {
@@ -97,50 +95,45 @@ export function cardMatchesOracleTheme(
     return true;
   }
   const haystack = patternMatchHaystack(card);
-  return (
-    tokensMatchPattern(haystack, pattern) || cardMatchesVocabularyBridge(haystack, phrase, expansion)
-  );
+  return tokensMatchPattern(haystack, pattern);
 }
 
 export function cardsMatchingTheme(
   cards: readonly MtgCard[],
   phrase: string,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): MtgCard[] {
   const trimmed = phrase.trim();
   if (!trimmed) {
     return [];
   }
-  return cards.filter((card) => cardMatchesTheme(card, trimmed, expansion));
+  return cards.filter((card) => cardMatchesTheme(card, trimmed, graph));
 }
 
 export function cardsMatchingOracleTheme(
   cards: readonly MtgCard[],
   phrase: string,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): MtgCard[] {
   const trimmed = phrase.trim();
   if (!trimmed) {
     return [];
   }
-  return cards.filter((card) => cardMatchesOracleTheme(card, trimmed, expansion));
+  return cards.filter((card) => cardMatchesOracleTheme(card, trimmed, graph));
 }
 
 /** Trigger or condition subject shares the theme — not a leaf effect or keyword alone. */
 export function cardThemeClauseCoupled(
   card: MtgCard,
   phrase: string,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): boolean {
   const haystack = discoveryClauseHaystackTokens(card);
   if (haystack.length === 0) {
     return false;
   }
   const pattern = phrasePatternTokens(phrase);
-  return (
-    (pattern.length > 0 && tokensMatchPattern(haystack, pattern)) ||
-    cardMatchesVocabularyBridge(haystack, phrase, expansion)
-  );
+  return pattern.length > 0 && tokensMatchPattern(haystack, pattern);
 }
 
 /** Clause-coupled cards first; collection order inside each group. */
@@ -148,28 +141,13 @@ export function compareThemeFilter(
   a: MtgCard,
   b: MtgCard,
   phrase: string,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): number {
   const coupled =
-    Number(cardThemeClauseCoupled(b, phrase, expansion)) -
-    Number(cardThemeClauseCoupled(a, phrase, expansion));
+    Number(cardThemeClauseCoupled(b, phrase, graph)) -
+    Number(cardThemeClauseCoupled(a, phrase, graph));
   if (coupled !== 0) {
     return coupled;
   }
   return compareArenaCollection(a, b);
-}
-
-function cardMatchesVocabularyBridge(
-  haystack: readonly string[],
-  phrase: string,
-  expansion?: VocabularyExpansion | null
-): boolean {
-  if (!expansion) {
-    return false;
-  }
-  const chunks = expansion.get(vocabularyPhraseKey(phrase));
-  if (!chunks) {
-    return false;
-  }
-  return chunks.some((chunk) => tokensMatchPattern(haystack, chunk));
 }

@@ -6,7 +6,10 @@ import { MtgCard } from '../../shared/models/card/card';
 import { SetVocabulary } from '../../shared/models/card/set-vocabulary';
 import { compareArenaCollection, ManaColor } from '../../shared/models/card/arena-collection.filter';
 import { ConcentratedPattern, scheduleConcentrate } from '../../shared/models/discovery/concentration';
-import { EmergentPattern } from '../../shared/models/discovery/scope-emergence';
+import {
+  EmergentPattern,
+  PatternRankMode
+} from '../../shared/models/discovery/scope-emergence';
 import {
   remainingPoolCards,
   remainingPoolCounts
@@ -19,7 +22,7 @@ import {
   cardsMatchingOracleTheme,
   minSignificantThemeCards
 } from '../../shared/models/discovery/theme-match';
-import { VocabularyExpansion } from '../../shared/models/discovery/vocabulary-expansion';
+import { CatalogGraph } from '../../shared/models/discovery/graph/catalog-graph';
 import { DECK_STATUSES, DeckStatus, MtgDeck } from '../../shared/models/deck/deck';
 import { MTG_CARD_ASPECT } from '../../shared/ui/card-hover-preview/card-hover-preview.layout';
 
@@ -42,6 +45,7 @@ export interface PatternState {
   patterns: EmergentPattern[];
   loading: boolean;
   scoped: boolean;
+  rankMode: PatternRankMode;
 }
 
 export interface ThemePreviewLayout {
@@ -163,13 +167,13 @@ export function isDeckDragData(data: unknown): data is MtgDeck {
 export function buildThemePreviewState(
   pool: readonly MtgCard[],
   theme: string | null,
-  expansion?: VocabularyExpansion | null
+  graph?: CatalogGraph | null
 ): ThemePreviewState {
   if (!theme) {
     return { theme: null, cards: [], emptyReason: 'none', matchCount: 0, minRequired: 0 };
   }
 
-  const matches = cardsMatchingOracleTheme(pool, theme, expansion).sort(compareArenaCollection);
+  const matches = cardsMatchingOracleTheme(pool, theme, graph).sort(compareArenaCollection);
   const minRequired = minSignificantThemeCards(pool.length);
   if (matches.length >= minRequired) {
     return { theme, cards: matches, emptyReason: 'none', matchCount: matches.length, minRequired };
