@@ -1,5 +1,7 @@
+import { describe, expect, it } from 'vitest';
 import {
   isGlueStopPhrase,
+  parsePrintedNumber,
   phrasePatternTokens,
   tokenizeNormalizedText,
   tokenizeOracle,
@@ -11,6 +13,9 @@ describe('oracle-diction', () => {
     expect(tokenizeOracle('Draw a card.')).toContain(NUM_TOKEN);
     expect(tokenizeOracle('Draw two cards.')).toContain(NUM_TOKEN);
     expect(tokenizeOracle('Draw 2 cards.')).toContain(NUM_TOKEN);
+    expect(parsePrintedNumber('three')).toBe(3);
+    expect(parsePrintedNumber('3')).toBe(3);
+    expect(parsePrintedNumber('x')).toBeNull();
   });
 
   it('folds plural tokens to singular when both appear in corpus chunk', () => {
@@ -28,7 +33,7 @@ describe('oracle-diction', () => {
 
   it('treats end of turn as glue, not a theme phrase', () => {
     const tokens = tokenizeNormalizedText('Until end of turn, creatures you control get +1/+1.');
-    expect(tokens).toContain('end_of_turn');
+    expect(tokens).toContain('until_end_of_turn');
     expect(isGlueStopPhrase('end of turn')).toBe(true);
     expect(isGlueStopPhrase('end of')).toBe(true);
     expect(isGlueStopPhrase('of turn')).toBe(true);

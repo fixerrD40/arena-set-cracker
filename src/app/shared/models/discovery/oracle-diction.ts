@@ -1,4 +1,23 @@
 export const NUM_TOKEN = '<NUM>';
+const NUM_GUARD = 'numtokenplaceholder';
+
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14
+};
 
 const RE_NUM = /\b(\d+|x|a|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen)\b/gi;
 
@@ -13,6 +32,8 @@ const GLUE_PHRASES: readonly string[] = [
   'beginning of draw',
   'beginning of end',
   'until end of turn',
+  'until your next turn',
+  'if able',
   'end of combat',
   'end of turn',
   'enters the battlefield',
@@ -44,6 +65,19 @@ export function cleanOracleText(text: string): string {
 
 export function normalizeToken(token: string): string {
   return token.replace(RE_NUM, NUM_TOKEN);
+}
+
+/** Digits and number words from print. `x` is not a bound STAT. */
+export function parsePrintedNumber(token: string): number | null {
+  const normalized = token.trim().toLowerCase();
+  if (normalized === 'x') {
+    return null;
+  }
+  if (normalized in NUMBER_WORDS) {
+    return NUMBER_WORDS[normalized];
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function glueToken(phrase: string): string {
@@ -101,13 +135,25 @@ export function isStructuralPattern(phrase: string): boolean {
   return isGlueStopPhrase(phrase);
 }
 
+/** Drop timing/targeting glue from a remainder string. Longest phrase first. */
+export function stripGlueFromText(text: string): string {
+  let result = ` ${cleanOracleText(text)} `;
+  const phrases = [...GLUE_PHRASES].sort((a, b) => b.length - a.length);
+  for (const phrase of phrases) {
+    result = result.replaceAll(` ${phrase} `, ' ');
+  }
+  return result.replace(/\s+/g, ' ').trim();
+}
+
 export function phrasePatternTokens(phrase: string): string[] {
   return phrase
+    .replaceAll(NUM_TOKEN, ` ${NUM_GUARD} `)
     .trim()
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
-    .flatMap((part) => part.split('_').filter(Boolean));
+    .flatMap((part) => part.split('_').filter(Boolean))
+    .map((token) => (token === NUM_GUARD ? NUM_TOKEN : normalizeToken(token)));
 }
 
 function buildGlueStopSet(): Set<string> {

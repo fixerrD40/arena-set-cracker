@@ -1,4 +1,4 @@
-import { MtgCard } from '../card/card';
+import type { MtgCard } from '../card/card';
 
 export type ClauseType = 'trigger' | 'condition';
 
@@ -23,42 +23,36 @@ export interface ParsedEffect {
   modifiers?: string[];
   replacement?: ParsedEffect;
   cost?: string[];
+  keyword?: string;
 }
 
 export interface FlattenedOracle {
   triggers: string[];
   conditions: string[];
   effects: string[];
+  costs: string[];
+  keywords: string[];
+  pointers: string[];
 }
 
 const TRIGGER = 'trigger';
 const CONDITION = 'condition';
 
-const TRIGGER_PREFIX = ['whenever', 'when', 'at the beginning', 'after'] as const;
+const TRIGGER_PREFIX = ['whenever', 'when', 'at the beginning of', 'at the beginning', 'after'] as const;
 const CONDITION_PREFIX = ['if', 'as long as'] as const;
 
-const CORE_KEYWORDS = new Set([
-  'deathtouch',
-  'double strike',
-  'first strike',
-  'flash',
-  'flying',
-  'indestructible',
-  'haste',
-  'lifelink',
-  'menace',
-  'reach',
-  'trample',
-  'vigilance'
-]);
-
 const REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN = /\byou do\b/i;
-const EFFECT_CHOICE_PATTERN = /\bchoose\s(one|two)\b/i;
+const EFFECT_CHOICE_PATTERN =
+  /\bchoose\s+(?:up\s+to\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+|x|that many)(?:\s+or\s+(?:both|more))?\b/i;
 const EFFECT_OPTIONAL_PATTERN = /\byou may\b/i;
-const EFFECT_REPLACEMENT_PATTERN = /\binstead\b/i;
-const MANA_SYMBOL_PATTERN = /\{(?:[WUBRG]\/[WUBRG]|[WUBRG]|\d+|X)\}/i;
+/**
+ * Sentence-level replacement fork (`instead create…` / `Otherwise, …`).
+ * Not `instead of` (destination framing) and not trailing adverbial `… instead.`
+ */
+const EFFECT_REPLACEMENT_PATTERN = /\botherwise\b|\binstead(?!\s+of)(?=\s+\S)/i;
+const MANA_SYMBOL_PATTERN = /\{(?:[WUBRG]\/[WUBRG]|[WUBRGCEP]|\d+|X)\}/i;
 const TAP_SYMBOL_PATTERN = /\{T\}/i;
-const EQUIP_PATTERN = /^equip (?:\w+ )?/i;
+const EQUIP_PATTERN = /^equip(?:\s+\w+)?(?=\s*\{)/i;
 const ASSIGNED_TEXT_PATTERN = /"(.*?)"/;
 
 const ALL_PREFIXES = [
@@ -73,43 +67,186 @@ const PREFIX_PATTERNS = ALL_PREFIXES.map(([type, prefix]) => ({
 }));
 
 export function parseOracleText(oracleText: string, keywords: readonly string[] = []): ParsedEffect[] {
-  const { remainder } = stripKeywords(oracleText, keywords);
-  const marks = markStructuralElements(remainder);
-  return parseText(remainder, marks);
+  const stripped = stripKeywords(oracleText, keywords);
+  const labeled = stripAbilityLabels(stripped.remainder);
+  const nested = stripKeywords(labeled.remainder, keywords);
+  return parseText(nested.remainder, markStructuralElements(nested.remainder));
 }
 
 export function flattenOracleText(oracleText: string, keywords: readonly string[] = []): FlattenedOracle {
-  return flattenParsedOracle(parseOracleText(oracleText, keywords));
+  const stripped = stripKeywords(oracleText, keywords);
+  const labeled = stripAbilityLabels(stripped.remainder);
+  // Labels can expose a nested costed keyword ability (`Exhaust — Waterbend {3}:`).
+  const nested = stripKeywords(labeled.remainder, keywords);
+  const parsed = parseText(nested.remainder, markStructuralElements(nested.remainder));
+  const flat = flattenParsedOracle(parsed);
+  return retagCostedKeywords(
+    {
+      ...flat,
+      keywords: [...stripped.keywordText, ...labeled.labels, ...nested.keywordText, ...flat.keywords],
+      costs: [...stripped.costs, ...labeled.costs, ...nested.costs, ...flat.costs]
+    },
+    keywords
+  );
 }
 
-export function flattenOracleCard(card: Pick<MtgCard, 'oracleText'>): FlattenedOracle {
-  return flattenOracleText(card.oracleText ?? '');
+export function flattenOracleCard(card: Pick<MtgCard, 'oracleText' | 'keywords'>): FlattenedOracle {
+  return flattenOracleText(card.oracleText ?? '', card.keywords ?? []);
+}
+
+/** Each face is its own oracle document. Layout (not `//`) says why there is more than one. */
+export function flattenOracleFaces(
+  faces: readonly string[],
+  keywords: readonly string[] = []
+): FlattenedOracle {
+  const nonempty = faces.map((face) => face.trim()).filter(Boolean);
+  if (nonempty.length <= 1) {
+    return flattenOracleText(nonempty[0] ?? '', keywords);
+  }
+  return mergeFlattenedOracle(nonempty.map((face) => flattenOracleText(face, keywords)));
+}
+
+export function mergeFlattenedOracle(parts: readonly FlattenedOracle[]): FlattenedOracle {
+  const triggers: string[] = [];
+  const conditions: string[] = [];
+  const effects: string[] = [];
+  const costs: string[] = [];
+  const keywords: string[] = [];
+  const pointers: string[] = [];
+  const seenPointers = new Set<string>();
+  for (const part of parts) {
+    triggers.push(...part.triggers);
+    conditions.push(...part.conditions);
+    effects.push(...part.effects);
+    costs.push(...part.costs);
+    keywords.push(...part.keywords);
+    for (const pointer of part.pointers) {
+      if (!seenPointers.has(pointer)) {
+        seenPointers.add(pointer);
+        pointers.push(pointer);
+      }
+    }
+  }
+  return { triggers, conditions, effects, costs, keywords, pointers };
 }
 
 export function flattenParsedOracle(parsed: readonly ParsedEffect[]): FlattenedOracle {
   const triggers: string[] = [];
   const conditions: string[] = [];
   const effects: string[] = [];
+  const costs: string[] = [];
+  const keywords: string[] = [];
 
   for (const entry of parsed) {
     collectClauses(entry, triggers, conditions);
-
-    if (entry.effects) {
-      effects.push(...extractLeafEffects(entry.effects));
-    } else if (entry.text) {
-      effects.push(entry.text);
-    }
+    collectCosts(entry, costs);
+    collectKeywords(entry, keywords);
+    collectEffectLeaves(entry, effects);
   }
 
-  return { triggers, conditions, effects };
+  const leaves = [...triggers, ...conditions, ...effects, ...costs, ...keywords];
+  return { triggers, conditions, effects, costs, keywords, pointers: collectPointers(leaves) };
+}
+
+function retagCostedKeywords(flat: FlattenedOracle, printed: readonly string[]): FlattenedOracle {
+  if (printed.length === 0) {
+    return flat;
+  }
+  const names = printed.map((keyword) => keyword.trim()).filter(Boolean);
+  const effects: string[] = [];
+  const keywords = [...flat.keywords];
+  const costs = [...flat.costs];
+  for (const effect of flat.effects) {
+    const tagged = names.find((name) =>
+      new RegExp(`^${escapeRegExp(name)}\\s+(\\{[^}]+\\})+\\.?$`, 'i').test(effect.trim())
+    );
+    if (!tagged) {
+      effects.push(effect);
+      continue;
+    }
+    keywords.push(tagged);
+    for (const mana of effect.matchAll(/\{[^}]+\}/g)) {
+      costs.push(mana[0]);
+    }
+  }
+  return { ...flat, effects, keywords, costs };
+}
+
+function collectEffectLeaves(entry: ParsedEffect, effects: string[]): void {
+  if (entry.effects) {
+    effects.push(...extractLeafEffects(entry.effects).map(stripInsteadOfFraming));
+  } else if (!entry.keyword && entry.text) {
+    effects.push(stripInsteadOfFraming(entry.text));
+  }
+  if (entry.replacement) {
+    collectEffectLeaves(entry.replacement, effects);
+  }
+}
+
+/** Destination `instead of…` and trailing adverbial `… instead` stay on the same VP. */
+function stripInsteadOfFraming(text: string): string {
+  return text
+    .replace(/\binstead of\b[\w\s'’/+-]*/gi, ' ')
+    .replace(/\binstead\b\.?$/i, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([.;,])/g, '$1')
+    .trim();
+}
+
+function collectKeywords(entry: ParsedEffect, keywords: string[]): void {
+  if (entry.keyword?.trim()) {
+    keywords.push(entry.keyword.trim());
+  }
+  for (const nested of entry.effects ?? []) {
+    collectKeywords(nested, keywords);
+  }
+  if (entry.replacement) {
+    collectKeywords(entry.replacement, keywords);
+  }
+}
+
+function collectCosts(entry: ParsedEffect, costs: string[]): void {
+  for (const part of entry.cost ?? []) {
+    const trimmed = part.trim().replace(/^,|,$/g, '').trim();
+    if (trimmed) {
+      costs.push(trimmed);
+    }
+  }
+  for (const nested of entry.effects ?? []) {
+    collectCosts(nested, costs);
+  }
+  if (entry.replacement) {
+    collectCosts(entry.replacement, costs);
+  }
+}
+
+const POINTER_PATTERN = /\b(this|that)(?:\s+[a-z0-9]+)?\b/gi;
+
+function collectPointers(texts: readonly string[]): string[] {
+  const pointers: string[] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    for (const match of text.matchAll(POINTER_PATTERN)) {
+      const key = match[0].toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        pointers.push(key);
+      }
+    }
+  }
+  return pointers;
 }
 
 function collectClauses(entry: ParsedEffect, triggers: string[], conditions: string[]): void {
   for (const clause of entry.clauses ?? []) {
+    const subjects = clause.subjects.filter(
+      (subject) =>
+        !REFLEXIVE_SUBORDINATE_CLAUSE_PATTERN.test(subject) && !/^able\b/i.test(subject.trim())
+    );
     if (clause.type === TRIGGER) {
-      triggers.push(...clause.subjects);
+      triggers.push(...subjects);
     } else if (clause.type === CONDITION) {
-      conditions.push(...clause.subjects);
+      conditions.push(...subjects);
     }
   }
   for (const nested of entry.effects ?? []) {
@@ -120,21 +257,58 @@ function collectClauses(entry: ParsedEffect, triggers: string[], conditions: str
   }
 }
 
-function stripKeywords(text: string, keywords: readonly string[]): { keywordText: string[]; remainder: string } {
+const COSTED_PRINTED_KEYWORD = /^(.+?)\s*((?:\{[^}]+\})+)\.?$/;
+const COSTED_KEYWORD_ABILITY = /^(.+?)\s*((?:\{[^}]+\})+)\s*:/;
+
+/** Fold trailing bang/period so printed `Start your engines!` matches the oracle line. */
+function normalizeKeywordKey(text: string): string {
+  return text.toLowerCase().replace(/[!?.]+$/g, '').trim();
+}
+
+function stripKeywords(
+  text: string,
+  keywords: readonly string[]
+): { keywordText: string[]; remainder: string; costs: string[] } {
   const lines = text.split('\n');
   const stripped: string[] = [];
-  const coreKeywords = [...new Set(keywords.map((kw) => kw.toLowerCase()))].filter((kw) => CORE_KEYWORDS.has(kw));
-  const coreKeywordSet = new Set(coreKeywords);
+  const printed = [...new Set(keywords.map((kw) => kw.trim()).filter(Boolean))];
+  const keywordSet = new Set(printed.map(normalizeKeywordKey));
+  const keywordText: string[] = [];
+  const costs: string[] = [];
 
   for (const line of lines) {
     let lineClean = line.replace(/ ?\([^)]*\)/g, '');
     const lineLower = lineClean.toLowerCase();
 
-    for (const kw of coreKeywords) {
-      const pattern = new RegExp(`^${escapeRegExp(kw)}\\b`);
+    for (const kw of printed) {
+      const key = normalizeKeywordKey(kw);
+      const pattern = new RegExp(`^${escapeRegExp(key)}(?:[!?.]+)?(?:\\b|(?=[\\s,:{]|$))`, 'i');
       if (pattern.test(lineLower)) {
+        if (/ — /.test(lineClean)) {
+          break;
+        }
+        const ability = COSTED_KEYWORD_ABILITY.exec(lineClean);
+        if (ability && keywordSet.has(normalizeKeywordKey(ability[1]))) {
+          keywordText.push(ability[1]);
+          lineClean = lineClean.slice(ability[1].length).trim();
+          break;
+        }
         const clauses = lineClean.split(',').map((clause) => clause.trim());
-        lineClean = clauses.filter((clause) => !coreKeywordSet.has(clause.toLowerCase())).join(', ').trim();
+        const kept: string[] = [];
+        for (const clause of clauses) {
+          if (keywordSet.has(normalizeKeywordKey(clause))) {
+            keywordText.push(clause.replace(/[!?.]+$/g, '').trim() || clause);
+            continue;
+          }
+          const costed = COSTED_PRINTED_KEYWORD.exec(clause);
+          if (costed && keywordSet.has(normalizeKeywordKey(costed[1]))) {
+            keywordText.push(costed[1]);
+            costs.push(...(costed[2].match(/\{[^}]+\}/g) ?? []));
+            continue;
+          }
+          kept.push(clause);
+        }
+        lineClean = kept.join(', ').trim();
         break;
       }
     }
@@ -144,7 +318,54 @@ function stripKeywords(text: string, keywords: readonly string[]): { keywordText
     }
   }
 
-  return { keywordText: coreKeywords, remainder: stripped.join('\n') };
+  return { keywordText, remainder: stripped.join('\n'), costs };
+}
+
+const SAGA_CHAPTER_LABEL = /^[IVXLCDM]+(?:,\s*[IVXLCDM]+)*$/i;
+const MODE_EXTRA_COST = /^((?:\{[^}]+\})+)\s+—\s+(.+)$/;
+
+function stripAbilityLabels(text: string): { labels: string[]; remainder: string; costs: string[] } {
+  const labels: string[] = [];
+  const costs: string[] = [];
+  const lines = text.split('\n');
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    const peeled = peelLabeledLine(line, labels, costs);
+    if (peeled) {
+      kept.push(peeled);
+    }
+  }
+
+  return { labels, remainder: kept.join('\n'), costs };
+}
+
+function peelLabeledLine(line: string, labels: string[], costs: string[]): string {
+  const trimmed = line.trim();
+  const bullet = trimmed.startsWith('•') ? '• ' : '';
+  const body = bullet ? trimmed.replace(/^•\s*/, '') : trimmed;
+  const labeled = /^(.+?) — (.+)$/.exec(body);
+  if (!labeled) {
+    return trimmed;
+  }
+  const name = labeled[1].trim();
+  if (EFFECT_CHOICE_PATTERN.test(name) || SAGA_CHAPTER_LABEL.test(name) || /[{}:]/.test(name)) {
+    return trimmed;
+  }
+
+  labels.push(name);
+  return peelModeCost(`${bullet}${labeled[2].trim()}`, costs);
+}
+
+function peelModeCost(line: string, costs: string[]): string {
+  const bullet = line.startsWith('•') ? '• ' : '';
+  const body = bullet ? line.replace(/^•\s*/, '') : line;
+  const extra = MODE_EXTRA_COST.exec(body);
+  if (!extra) {
+    return line;
+  }
+  costs.push(...(extra[1].match(/\{[^}]+\}/g) ?? []));
+  return extra[2].trim();
 }
 
 export function markStructuralElements(text: string): StructuralMark[] {
@@ -222,6 +443,10 @@ export function markStructuralElements(text: string): StructuralMark[] {
     if (/[a-z]/i.test(ch) && (i === 0 || !/\w/.test(text[i - 1]))) {
       const prefixMatch = matchBestPrefix(text, i);
       if (prefixMatch) {
+        if (prefixMatch.prefix === 'if' && /^\s*able\b/i.test(text.slice(prefixMatch.end))) {
+          i += 1;
+          continue;
+        }
         marks.push(prefixMatch);
         i = prefixMatch.end;
         continue;
@@ -309,17 +534,19 @@ function parseText(text: string, marks: StructuralMark[]): ParsedEffect[] {
   let segmentStart = 0;
   let segmentText = '';
   let segmentMarks: StructuralMark[] = [];
+  let segmentSawBullet = false;
   let activatedAbility = false;
 
   while (i < n) {
     const mark = marks[i];
     if (mark.type === 'delimiter') {
-      if (activatedAbility) {
-        if (mark.text !== '\n' && i !== n - 1) {
+      if (activatedAbility || segmentKey) {
+        const laterDelimiter = marks.slice(i + 1).some((entry) => entry.type === 'delimiter');
+        if (mark.text !== '\n' && laterDelimiter) {
           i += 1;
           continue;
         }
-        if (mark.text === '\n') {
+        if (mark.text === '\n' && activatedAbility) {
           activatedAbility = false;
         }
       }
@@ -338,24 +565,42 @@ function parseText(text: string, marks: StructuralMark[]): ParsedEffect[] {
       }
 
       if (currentMarks.some((entry) => entry.type === 'replacement')) {
+        if (segmentKey) {
+          segmentText += currentText;
+          segmentMarks = segmentMarks.concat(currentMarks);
+          continue;
+        }
         chunks.set(key, { text: currentText, marks: currentMarks, end_pos: endPos, start_pos: startPos });
         key += 1;
         continue;
       }
 
       const isForwardJoin = currentMarks.some((entry) => entry.type === 'choice');
-      const isBullet = currentText.startsWith('\u2022');
+      const isBullet = /^\s*\u2022/.test(currentText);
 
       if (isForwardJoin) {
+        if (segmentKey) {
+          segmentText += currentText;
+          segmentMarks = segmentMarks.concat(currentMarks);
+          continue;
+        }
         segmentStart = startPos;
         segmentKey = key;
         segmentText = currentText;
         segmentMarks = currentMarks;
+        segmentSawBullet = false;
         key += 1;
         continue;
       }
 
-      if (isBullet && segmentKey) {
+      if (segmentKey && isBullet) {
+        segmentText += currentText;
+        segmentMarks = segmentMarks.concat(currentMarks);
+        segmentSawBullet = true;
+        continue;
+      }
+
+      if (segmentKey && !segmentSawBullet) {
         segmentText += currentText;
         segmentMarks = segmentMarks.concat(currentMarks);
         continue;
@@ -371,6 +616,7 @@ function parseText(text: string, marks: StructuralMark[]): ParsedEffect[] {
         segmentText = '';
         segmentMarks = [];
         segmentKey = 0;
+        segmentSawBullet = false;
       }
 
       chunks.set(key, { text: currentText, marks: currentMarks, end_pos: endPos, start_pos: startPos });
@@ -385,40 +631,40 @@ function parseText(text: string, marks: StructuralMark[]): ParsedEffect[] {
 
   if (segmentKey) {
     chunks.set(segmentKey, {
-      text: segmentText,
-      marks: segmentMarks,
-      end_pos: segmentMarks[segmentMarks.length - 1]?.end ?? text.length,
+      text: text.slice(segmentStart),
+      marks: marks.filter((mark) => mark.start >= segmentStart),
+      end_pos: text.length,
       start_pos: segmentStart
     });
-  }
-
-  const lastDelim = marks.filter((mark) => mark.type === 'delimiter').sort((a, b) => b.end - a.end)[0];
-  if (lastDelim && lastDelim.end < text.length) {
-    chunks.set(key, {
-      text: text.slice(lastDelim.end),
-      marks: marks.filter((mark) => mark.start >= lastDelim.end),
-      end_pos: text.length,
-      start_pos: start
-    });
+  } else {
+    const lastDelim = marks.filter((mark) => mark.type === 'delimiter').sort((a, b) => b.end - a.end)[0];
+    if (lastDelim && lastDelim.end < text.length) {
+      chunks.set(key, {
+        text: text.slice(lastDelim.end),
+        marks: marks.filter((mark) => mark.start >= lastDelim.end),
+        end_pos: text.length,
+        start_pos: start
+      });
+    } else if (chunks.size === 0 && text.trim()) {
+      chunks.set(key, { text, marks, end_pos: text.length, start_pos: 0 });
+    }
   }
 
   const parsed = new Map<number, ParsedEffect>();
   for (const [chunkKey, chunk] of chunks) {
     const adjustedMarks = shiftMarksRelativeToSubtext(chunk.marks, chunk.start_pos);
-    if (adjustedMarks.some((entry) => entry.type === 'replacement')) {
-      parsed.set(chunkKey, parseReplacement(chunk.text, adjustedMarks));
-    } else if (adjustedMarks.some((entry) => entry.type === 'equip')) {
+    if (adjustedMarks.some((entry) => entry.type === 'equip')) {
       parsed.set(chunkKey, parseEquip(chunk.text, adjustedMarks));
     } else if (adjustedMarks.some((entry) => entry.type === 'cost_divider')) {
       parsed.set(chunkKey, parseActivatedAbility(chunk.text, adjustedMarks));
+    } else if (
+      adjustedMarks.some((entry) => entry.type === 'replacement') &&
+      !adjustedMarks.some((entry) => entry.type === 'choice')
+    ) {
+      parsed.set(chunkKey, parseReplacementWithDefault(chunk.text, adjustedMarks));
     } else {
       const effect = parseEffect(chunk.text, adjustedMarks);
-      const nextChunk = chunks.get(chunkKey + 1);
-      let endPos = chunk.end_pos;
-      if (nextChunk && nextChunk.marks.some((entry) => entry.type === 'replacement')) {
-        endPos = Math.max(endPos, nextChunk.end_pos);
-      }
-      effect.text = text.slice(chunk.start_pos, endPos).trim();
+      effect.text = chunk.text.trim();
       parsed.set(chunkKey, effect);
     }
   }
@@ -484,6 +730,13 @@ function parseEffect(text: string, marks: StructuralMark[]): ParsedEffect {
       modifiers.push('optional');
       consumedRanges.push([mark.start, mark.end]);
       i += 1;
+    } else if (mark.type === 'assigned_text') {
+      const inner = unwrapAssignedText(mark.text);
+      if (inner) {
+        nestedEffects.push(...parseText(inner, markStructuralElements(inner)));
+      }
+      consumedRanges.push([mark.start, mark.end]);
+      i += 1;
     } else {
       i += 1;
     }
@@ -507,6 +760,36 @@ function parseEffect(text: string, marks: StructuralMark[]): ParsedEffect {
   }
 
   return effect;
+}
+
+function replacementClauseStart(marks: readonly StructuralMark[]): number {
+  const instead = marks.find((mark) => mark.type === 'replacement');
+  if (!instead) {
+    return 0;
+  }
+  const condition = [...marks]
+    .reverse()
+    .find((mark) => mark.type === CONDITION && mark.start < instead.start);
+  return condition?.start ?? instead.start;
+}
+
+function parseReplacementWithDefault(text: string, marks: StructuralMark[]): ParsedEffect {
+  const start = replacementClauseStart(marks);
+  const prefix = text
+    .slice(0, start)
+    .replace(/\s*,?\s*and\s*$/i, '')
+    .trim();
+  if (!prefix || start <= 0) {
+    return parseReplacement(text, marks);
+  }
+  const prefixMarks = marks.filter((mark) => mark.end <= start);
+  const main = parseEffect(prefix, prefixMarks);
+  main.text = prefix;
+  main.replacement = parseReplacement(
+    text.slice(start),
+    shiftMarksRelativeToSubtext(marks, start)
+  );
+  return main;
 }
 
 function parseReplacement(text: string, marks: StructuralMark[]): ParsedEffect {
@@ -536,6 +819,7 @@ function parseReplacement(text: string, marks: StructuralMark[]): ParsedEffect {
   if (lastConsumed < text.length) {
     let residualEffect = text.slice(lastConsumed);
     residualEffect = residualEffect.replace(EFFECT_REPLACEMENT_PATTERN, '');
+    residualEffect = residualEffect.replace(/^[,.\s]+/, '');
     residualEffect = residualEffect.replace(/\s+([.;\n])/g, '$1');
     if (residualEffect.trim()) {
       replacementEffects.push({ text: residualEffect.trim() });
@@ -557,18 +841,21 @@ function parseReplacement(text: string, marks: StructuralMark[]): ParsedEffect {
 
 function parseActivatedAbility(text: string, marks: StructuralMark[]): ParsedEffect {
   const sortedMarks = [...marks].sort((a, b) => a.start - b.start);
+  const colonMark = sortedMarks.find((mark) => mark.type === 'cost_divider');
+  const colonPos = colonMark?.start ?? text.length;
   const costParts: string[] = [];
   let lastCostEnd = 0;
 
   for (const mark of sortedMarks) {
+    if (mark.start >= colonPos) {
+      continue;
+    }
     if (mark.type === 'mana_cost' || mark.type === 'tap_cost') {
       costParts.push(mark.text);
       lastCostEnd = Math.max(lastCostEnd, mark.end);
     }
   }
 
-  const colonMark = sortedMarks.find((mark) => mark.type === 'cost_divider');
-  const colonPos = colonMark?.start ?? text.length;
   const extraCostText = text.slice(lastCostEnd, colonPos);
   if (extraCostText.trim().replace(/,/g, '')) {
     costParts.push(extraCostText.trim().replace(/^,|,$/g, ''));
@@ -603,15 +890,40 @@ function parseEquip(text: string, marks: StructuralMark[]): ParsedEffect {
   return {
     text: text.trim(),
     cost: costParts,
-    effects: [{ text: marks[0]?.text.trim() ?? '' }]
+    keyword: marks[0]?.text.trim() || undefined
   };
+}
+
+function unwrapAssignedText(quoted: string): string {
+  const trimmed = quoted.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
 }
 
 function consumeClause(text: string, marks: StructuralMark[]): [ParsedClause, number, number] {
   const mark = marks[0];
-  const endMatch = /[,.](\s*)/.exec(text.slice(mark.start));
-  const toConsume = endMatch ? endMatch.index + 2 : text.length - mark.start;
-  const endPos = mark.start + toConsume;
+  const punctMatch = /[,.](\s*)/.exec(text.slice(mark.start));
+  let contentEnd = punctMatch ? mark.start + punctMatch.index : text.length;
+
+  if (mark.type === CONDITION) {
+    const nextIf = marks
+      .slice(1)
+      .find((entry) => entry.type === CONDITION && entry.start < contentEnd);
+    if (nextIf) {
+      const between = text.slice(mark.end, nextIf.start);
+      const andSplit = /\sand\s+/i.exec(between);
+      if (andSplit) {
+        contentEnd = mark.end + andSplit.index;
+      }
+    }
+  }
+
+  const endPos =
+    punctMatch && contentEnd === mark.start + punctMatch.index
+      ? mark.start + punctMatch.index + punctMatch[0].length
+      : contentEnd;
   const clauseText = text.slice(mark.start, endPos).trim();
   const consumed = countMarksInRange(marks, mark.start, endPos);
   const relevantMarks = marks.slice(0, consumed).filter((entry) => entry.type === mark.type);
@@ -628,7 +940,7 @@ function consumeClause(text: string, marks: StructuralMark[]): [ParsedClause, nu
       const cleanedChunk = rawChunk.replace(/\s*(,?\s*(and|or))?\s*$/i, '');
       subjectEnd = subjectStart + cleanedChunk.length;
     } else {
-      subjectEnd = endPos - 2;
+      subjectEnd = contentEnd;
     }
 
     const subjectText = text.slice(subjectStart, subjectEnd).trim();
@@ -655,19 +967,45 @@ function consumeChoiceEffect(text: string, marks: StructuralMark[]): [ParsedEffe
   for (const line of lines.slice(1)) {
     if (/^\s*•/.test(line)) {
       clauseLines.push(line);
-    } else {
-      break;
+      continue;
     }
+    if (!clauseLines.some((entry) => /^\s*•/.test(entry)) && EFFECT_CHOICE_PATTERN.test(line)) {
+      clauseLines.push(line);
+      continue;
+    }
+    break;
   }
 
   const clauseText = clauseLines.join('\n').trim();
-  const choiceItems = [...clauseText.matchAll(/•\s*(.*?)(?:[\n\r]|$)/g)].map((entry) => entry[1].trim());
-  const effects = choiceItems.map((item) => ({
-    text: `• ${item}`,
-    effects: [{ text: item }]
-  }));
+  const headerBlock = clauseLines.filter((line) => !/^\s*•/.test(line)).join(' ');
+  const afterChoose = headerBlock.slice(match[0].length).replace(/^[\s.—\-]*/u, '').trim();
+  const headerVp = afterChoose
+    .replace(/^that hasn['’]?t been chosen\s*/i, '')
+    .replace(/^and\s+/i, '')
+    .replace(/^,\s*/u, '')
+    .replace(/\bwhere\s+[xyz]\b[\w\s'’/+-]*/gi, ' ')
+    .replace(EFFECT_CHOICE_PATTERN, ' ')
+    .replace(/\b(?:instead|otherwise)\b/gi, ' ')
+    .replace(/\byou may\b/gi, ' ')
+    .replace(/[.\s—\-]+$/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const headerEffects = headerVp.length > 0 ? parseText(headerVp, markStructuralElements(headerVp)) : [];
 
-  const clauseEnd = start + clauseLines.join('\n').length;
+  const choiceItems = [...clauseText.matchAll(/•\s*(.*?)(?:[\n\r]|$)/g)].map((entry) => entry[1].trim());
+  const effects = [
+    ...headerEffects,
+    ...choiceItems.map((item) => {
+      const innerMarks = markStructuralElements(item);
+      const inner = parseText(item, innerMarks);
+      if (inner.length === 1) {
+        return inner[0];
+      }
+      return { text: item, effects: inner };
+    })
+  ];
+
+  const clauseEnd = choiceStart + clauseLines.join('\n').length;
   const consumed = countMarksInRange(marks, start, clauseEnd);
 
   return [{ text: clauseText, effects }, consumed, clauseEnd];
@@ -691,6 +1029,9 @@ export function extractLeafEffects(effects: ParsedEffect[] | ParsedEffect | stri
     leafTexts.push(...extractLeafEffects(effects.effects));
   } else if (effects.text) {
     leafTexts.push(effects.text);
+  }
+  if (!Array.isArray(effects) && effects.replacement) {
+    leafTexts.push(...extractLeafEffects(effects.replacement));
   }
 
   return leafTexts;
